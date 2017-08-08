@@ -4,6 +4,7 @@ package reverser
 import (
     "net"
     "bufio"
+    "fmt"
 )
 
 // revServer contains properties of the reverser server
@@ -17,7 +18,27 @@ type revServer struct {
 }
 
 func (s *revServer) newConnection(finishChan chan byte) {
+    revConn, err := net.Dial(s.revNet, s.revConnAddr)
+    if err != nil {
+        // TODO:handle error
+    }
+    targetConn, err := net.Dial(s.targetNet, s.targetAddr)
+    if err != nil {
+        // TODO:handle error
+    }
 
+    errChan := make(chan error)
+
+    go connCopy(revConn, targetConn, errChan)
+    go connCopy(targetConn, revConn, errChan)
+
+    err = <-errChan
+    if err != nil {
+        // TODO: handle error
+    }
+    revConn.Close()
+    targetConn.Close()
+    finishChan <- 1
 }
 
 func (s *revServer) connect() {
@@ -63,6 +84,7 @@ func (s *revServer) Start() error {
         if err != nil {
             return err
         }
+        fmt.Println("receive updated required NUM")
 
         s.state.UpdateClientCount(requiredNum)
     }

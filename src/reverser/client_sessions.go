@@ -3,7 +3,6 @@ package reverser
 import (
     "net"
     "sync"
-    "io"
 )
 
 //======================================================================
@@ -67,12 +66,6 @@ func (matcher *connPairMatcher) GetReverserConnPair(conn net.Conn) connPair {
 }
 
 //=============================END=====================================
-
-func connCopy(src net.Conn, dst net.Conn, errChan chan error) {
-    // TODO: more logging
-    _, err := io.Copy(dst, src)
-    errChan <- err
-}
 
 func handleClientConn(conn net.Conn, matcher *connPairMatcher, state *connState) {
     state.AddClientCount()
