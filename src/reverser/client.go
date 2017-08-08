@@ -7,11 +7,7 @@ import (
     "net"
 )
 
-func handleClientConn(conn net.Conn) {
-
-}
-
-func handleRevConn(conn net.Conn) {
+func handleCtrlConn(conn net.Conn) {
 
 }
 
@@ -37,8 +33,14 @@ func StartClient(
     cliCh := make(chan net.Conn)
     revCh := make(chan net.Conn)
 
+    // ctrlCh is a channel used separately for control connections
+    ctrlCh := make(chan net.Conn)
+
     // Accept for reverser server side connections
+    // The first reverser side connection is always the control
+    // connection, used to start other data connections
     go func() {
+        connCount := true
         for {
             revConn, err := revListener.Accept()
             if err != nil {
@@ -46,8 +48,12 @@ func StartClient(
             }
 
             // TODO: logging
-            go handleRevConn(revConn)
-            revCh <- revConn
+            if connCount {
+                ctrlCh <- revConn
+                connCount = false;
+            } else {
+                revCh <- revConn
+            }
         }
     } ()
 
@@ -60,7 +66,6 @@ func StartClient(
             }
 
             // TODO: logging
-            go handleClientConn(cliConn)
             cliCh <- cliConn
         }
     } ()
@@ -72,6 +77,8 @@ func StartClient(
             go handleClientConn(conn)
         case conn := <-revCh:
             go handleRevConn(conn)
+        case conn := <-ctrlCh:
+            go handleCtrlConn(conn)
         }
     }
 
