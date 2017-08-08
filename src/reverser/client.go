@@ -31,8 +31,21 @@ func (state *connState) ReduceClientCount() {
     state.updateChan <- state.clientCount
 }
 
+func (state *connState) UpdateClientCount(num byte) {
+    if state.clientCount != num {
+        state.mux.Lock()
+        state.clientCount = num
+        state.mux.Unlock()
+        state.updateChan <- state.clientCount
+    }
+}
+
 func (state *connState) WaitForUpdate() byte {
     return <-state.updateChan
+}
+
+func (state *connState) GetUpdateChan() chan byte {
+    return state.updateChan
 }
 //===========================================================================
 
