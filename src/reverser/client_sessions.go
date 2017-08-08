@@ -26,7 +26,7 @@ type connPairMatcher struct {
 }
 
 // Get a pair for client connection submitted, blocking
-func (matcher connPairMatcher) GetClientConnPair(conn net.Conn) connPair {
+func (matcher *connPairMatcher) GetClientConnPair(conn net.Conn) connPair {
     // TODO: simplify this by using fewer channels
     // TODO: critical section seems to be flawed
     matcher.mux.Lock()
@@ -47,7 +47,7 @@ func (matcher connPairMatcher) GetClientConnPair(conn net.Conn) connPair {
 }
 
 // Get a pair for reverser connection submitted, blocking
-func (matcher connPairMatcher) GetReverserConnPair(conn net.Conn) connPair {
+func (matcher *connPairMatcher) GetReverserConnPair(conn net.Conn) connPair {
     // TODO: simplify this by using fewer channels
     matcher.mux.Lock()
     select {
@@ -74,7 +74,8 @@ func connCopy(src net.Conn, dst net.Conn, errChan chan error) {
     errChan <- err
 }
 
-func handleClientConn(conn net.Conn, matcher *connPairMatcher) {
+func handleClientConn(conn net.Conn, matcher *connPairMatcher, state *connState) {
+    state.AddClientCount()
     // Get connPair for this connection
     matcher.GetClientConnPair(conn)
 
@@ -82,7 +83,7 @@ func handleClientConn(conn net.Conn, matcher *connPairMatcher) {
     return
 }
 
-func handleRevConn(conn net.Conn, matcher *connPairMatcher) {
+func handleRevConn(conn net.Conn, matcher *connPairMatcher, state *connState) {
     // Get connPair for this connection
     pair := matcher.GetReverserConnPair(conn)
 
@@ -110,4 +111,5 @@ func handleRevConn(conn net.Conn, matcher *connPairMatcher) {
     // Simple no connection reuse model
     pair.ReverserConn.Close()
     pair.ClientConn.Close()
+    state.ReduceClientCount()
 }

@@ -5,15 +5,46 @@ package reverser
 
 import (
     "net"
+    "sync"
+    "bufio"
 )
 
+//============================================================================
 // Denotes the state of reverser client, i.e. how many connections from client
-type state struct {
-    clientCount int
+type connState struct {
+    clientCount byte
+    updateChan chan byte
+    mux sync.Mutex
 }
 
-func handleCtrlConn(conn net.Conn) {
+func (state *connState) AddClientCount() {
+    state.mux.Lock()
+    state.clientCount++
+    state.mux.Unlock()
+    state.updateChan <- state.clientCount
+}
 
+func (state *connState) ReduceClientCount() {
+    state.mux.Lock()
+    state.clientCount--
+    state.mux.Unlock()
+    state.updateChan <- state.clientCount
+}
+
+func (state *connState) WaitForUpdate() byte {
+    return <-state.updateChan
+}
+//===========================================================================
+
+func handleCtrlConn(conn net.Conn, state *connState) {
+    w := bufio.NewWriter(conn)
+    for {
+        requiredNum := state.WaitForUpdate()
+        err := w.WriteByte(requiredNum)
+        if err != nil {
+            // Handle err
+        }
+    }
 }
 
 // This function starts the client of the reverser and will block unless an error occurred
@@ -41,10 +72,15 @@ func StartClient(
     // ctrlCh is a channel used separately for control connections
     ctrlCh := make(chan net.Conn)
 
-    pairMatcher := connPairMatcher{
+    pairMatcher := &connPairMatcher{
         clientConnChan: make(chan net.Conn, 1),
         reverserConnChan: make(chan net.Conn, 1),
         connPairChan: make(chan connPair),
+    }
+
+    state := &connState{
+        clientCount: 0,
+        updateChan: make(chan byte, 5),
     }
 
     // Accept for reverser server side connections
@@ -85,11 +121,11 @@ func StartClient(
     for {
         select {
         case conn := <-cliCh:
-            go handleClientConn(conn, &pairMatcher)
+            go handleClientConn(conn, pairMatcher, state)
         case conn := <-revCh:
-            go handleRevConn(conn, &pairMatcher)
+            go handleRevConn(conn, pairMatcher, state)
         case conn := <-ctrlCh:
-            go handleCtrlConn(conn)
+            go handleCtrlConn(conn, state)
         }
     }
 
