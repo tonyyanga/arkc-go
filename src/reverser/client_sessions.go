@@ -28,6 +28,7 @@ type connPairMatcher struct {
 // Get a pair for client connection submitted, blocking
 func (matcher connPairMatcher) GetClientConnPair(conn net.Conn) connPair {
     // TODO: simplify this by using fewer channels
+    // TODO: critical section seems to be flawed
     matcher.mux.Lock()
     select {
     case revConn := <-matcher.reverserConnChan:
@@ -39,8 +40,8 @@ func (matcher connPairMatcher) GetClientConnPair(conn net.Conn) connPair {
         matcher.mux.Unlock()
         return pair
     default:
-        matcher.clientConnChan <- conn
         matcher.mux.Unlock()
+        matcher.clientConnChan <- conn
         return <-matcher.connPairChan
     }
 }
@@ -59,8 +60,8 @@ func (matcher connPairMatcher) GetReverserConnPair(conn net.Conn) connPair {
         matcher.mux.Unlock()
         return pair
     default:
-        matcher.reverserConnChan <- conn
         matcher.mux.Unlock()
+        matcher.reverserConnChan <- conn
         return <-matcher.connPairChan
     }
 }
@@ -68,11 +69,12 @@ func (matcher connPairMatcher) GetReverserConnPair(conn net.Conn) connPair {
 //=============================END=====================================
 
 func connCopy(src net.Conn, dst net.Conn, errChan chan error) {
+    // TODO: more logging
     _, err := io.Copy(dst, src)
     errChan <- err
 }
 
-func handleClientConn(conn net.Conn, matcher connPairMatcher) {
+func handleClientConn(conn net.Conn, matcher *connPairMatcher) {
     // Get connPair for this connection
     matcher.GetClientConnPair(conn)
 
@@ -80,7 +82,7 @@ func handleClientConn(conn net.Conn, matcher connPairMatcher) {
     return
 }
 
-func handleRevConn(conn net.Conn, matcher connPairMatcher) {
+func handleRevConn(conn net.Conn, matcher *connPairMatcher) {
     // Get connPair for this connection
     pair := matcher.GetReverserConnPair(conn)
 
@@ -105,6 +107,7 @@ func handleRevConn(conn net.Conn, matcher connPairMatcher) {
         }
     }
 
+    // Simple no connection reuse model
     pair.ReverserConn.Close()
     pair.ClientConn.Close()
 }

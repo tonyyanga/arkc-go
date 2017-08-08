@@ -7,6 +7,11 @@ import (
     "net"
 )
 
+// Denotes the state of reverser client, i.e. how many connections from client
+type state struct {
+    clientCount int
+}
+
 func handleCtrlConn(conn net.Conn) {
 
 }
@@ -80,9 +85,9 @@ func StartClient(
     for {
         select {
         case conn := <-cliCh:
-            go handleClientConn(conn, pairMatcher)
+            go handleClientConn(conn, &pairMatcher)
         case conn := <-revCh:
-            go handleRevConn(conn, pairMatcher)
+            go handleRevConn(conn, &pairMatcher)
         case conn := <-ctrlCh:
             go handleCtrlConn(conn)
         }
