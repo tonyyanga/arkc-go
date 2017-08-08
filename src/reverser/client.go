@@ -36,6 +36,12 @@ func StartClient(
     // ctrlCh is a channel used separately for control connections
     ctrlCh := make(chan net.Conn)
 
+    pairMatcher := connPairMatcher{
+        clientConnChan: make(chan net.Conn, 1),
+        reverserConnChan: make(chan net.Conn, 1),
+        connPairChan: make(chan connPair),
+    }
+
     // Accept for reverser server side connections
     // The first reverser side connection is always the control
     // connection, used to start other data connections
@@ -74,9 +80,9 @@ func StartClient(
     for {
         select {
         case conn := <-cliCh:
-            go handleClientConn(conn)
+            go handleClientConn(conn, pairMatcher)
         case conn := <-revCh:
-            go handleRevConn(conn)
+            go handleRevConn(conn, pairMatcher)
         case conn := <-ctrlCh:
             go handleCtrlConn(conn)
         }
