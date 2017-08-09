@@ -2,20 +2,19 @@ export GOPATH=${CURDIR}
 
 GOBUILDFLAGS =
 
-REVERSER_FILES = \
-	src/reverser/client.go \
-	src/reverser/client_sessions.go \
-	src/reverser/server.go \
-
 BIN_DIR = bin
-
-.PHONY: all clean
 
 all: reverser
 
-reverser: ${REVERSER_FILES} src/reverserClient.go src/reverserClient.go
+reverser: bin/reverserClient bin/reverserServer
+
+${BIN_DIR}/reverserClient: src/reverser/*.go src/reverserClient.go
 	go build ${GOBUILDFLAGS} -o ${BIN_DIR}/reverserClient src/reverserClient.go
+
+${BIN_DIR}/reverserServer: src/reverser/*.go src/reverserServer.go
 	go build ${GOBUILDFLAGS} -o ${BIN_DIR}/reverserServer src/reverserServer.go
 
 clean:
-	rm -f bin/*
+	rm -f ${BIN_DIR}/*
+
+.PHONY: all reverser clean
