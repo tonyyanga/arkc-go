@@ -48,6 +48,7 @@ func (s *revServer) newConnection(finishChan chan byte) {
         log.Printf("Error occurred when copying data: %v\n", err)
         return
     }
+    log.Println("Close a connection pair")
 }
 
 // This function starts individual goroutines which do connections

@@ -108,4 +108,6 @@ func handleRevConn(conn net.Conn, matcher *connPairMatcher, state *connState) {
     pair.ReverserConn.Close()
     pair.ClientConn.Close()
     state.ReduceClientCount()
+
+    log.Println("Close a connection pair")
 }
