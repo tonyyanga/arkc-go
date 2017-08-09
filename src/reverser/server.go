@@ -28,7 +28,7 @@ func (s *revServer) newConnection(finishChan chan byte) {
         return
     }
     defer revConn.Close()
-    defer finishChan <- 1
+    defer func() {finishChan <- 1} ()
 
     targetConn, err := net.Dial(s.targetNet, s.targetAddr)
     if err != nil {
