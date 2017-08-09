@@ -9,6 +9,7 @@ import (
     "fmt"
 )
 
+// Handler for control connection
 func handleCtrlConn(conn net.Conn, state *connState) {
     w := bufio.NewWriter(conn)
     for {

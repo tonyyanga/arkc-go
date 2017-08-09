@@ -1,13 +1,12 @@
 package reverser
 
 import (
-    "net"
     "io"
     "sync"
 )
 
-func connCopy(src net.Conn, dst net.Conn, errChan chan error) {
-    // TODO: more logging
+// Do io.Copy from src to dst, and return err to errChan channel
+func connCopy(src io.Reader, dst io.Writer, errChan chan error) {
     _, err := io.Copy(dst, src)
     errChan <- err
 }
@@ -20,6 +19,7 @@ type connState struct {
     mux sync.Mutex
 }
 
+// Increase the client count by one and issue updates
 func (state *connState) AddClientCount() {
     state.mux.Lock()
     state.clientCount++
@@ -27,6 +27,7 @@ func (state *connState) AddClientCount() {
     state.updateChan <- state.clientCount
 }
 
+// Decrease the client count by one and issue updates
 func (state *connState) ReduceClientCount() {
     state.mux.Lock()
     state.clientCount--
@@ -34,6 +35,7 @@ func (state *connState) ReduceClientCount() {
     state.updateChan <- state.clientCount
 }
 
+// Set the client count to num and issue updates if applicable
 func (state *connState) UpdateClientCount(num byte) {
     if state.clientCount != num {
         state.mux.Lock()
@@ -43,10 +45,12 @@ func (state *connState) UpdateClientCount(num byte) {
     }
 }
 
+// Block for update on client count, and return client count
 func (state *connState) WaitForUpdate() byte {
     return <-state.updateChan
 }
 
+// Return raw channel that receives client count updates
 func (state *connState) GetUpdateChan() chan byte {
     return state.updateChan
 }

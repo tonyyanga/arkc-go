@@ -67,6 +67,7 @@ func (matcher *connPairMatcher) GetReverserConnPair(conn net.Conn) connPair {
 
 //=============================END=====================================
 
+// Handler for client side connections
 func handleClientConn(conn net.Conn, matcher *connPairMatcher, state *connState) {
     state.AddClientCount()
     // Get connPair for this connection
@@ -76,6 +77,7 @@ func handleClientConn(conn net.Conn, matcher *connPairMatcher, state *connState)
     return
 }
 
+// Handler for reverser server side connections
 func handleRevConn(conn net.Conn, matcher *connPairMatcher, state *connState) {
     // Get connPair for this connection
     pair := matcher.GetReverserConnPair(conn)

@@ -7,7 +7,9 @@ import (
     "fmt"
 )
 
-// revServer contains properties of the reverser server
+//===========================================================================
+// revServer contains properties of the reverser server and does actual
+// networking operations
 type revServer struct {
     targetNet string
     targetAddr string
@@ -17,6 +19,8 @@ type revServer struct {
     state *connState
 }
 
+// This function does an individual connection and send 1 to finishChan
+// channel
 func (s *revServer) newConnection(finishChan chan byte) {
     revConn, err := net.Dial(s.revNet, s.revConnAddr)
     if err != nil {
@@ -41,6 +45,8 @@ func (s *revServer) newConnection(finishChan chan byte) {
     finishChan <- 1
 }
 
+// This function starts individual goroutines which do connections
+// according to state updates
 func (s *revServer) connect() {
     finishChan := make(chan byte)
     var activeConn byte = 0
@@ -67,6 +73,7 @@ func (s *revServer) connect() {
     }
 }
 
+// Start the reverser server
 func (s *revServer) Start() error {
     // First start the control connection
     conn, err := net.Dial(s.revNet, s.revConnAddr)
@@ -91,6 +98,7 @@ func (s *revServer) Start() error {
 
     return nil
 }
+//=============================== END =================================
 
 // This function starts the server of the reverser and will block unless an error occurred
 // Run this fucnction in a goroutine
