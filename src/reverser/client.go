@@ -6,7 +6,7 @@ package reverser
 import (
     "net"
     "bufio"
-    "fmt"
+    "log"
 )
 
 // Handler for control connection
@@ -16,16 +16,12 @@ func handleCtrlConn(conn net.Conn, state *connState) {
         requiredNum := state.WaitForUpdate()
         err := w.WriteByte(requiredNum)
         if err != nil {
-            // Handle err
-            fmt.Println("ERROR when sending SEND CONN REQ")
+            log.Fatalf("Error occurred at control connection: %vi\n", err)
         }
         err = w.Flush()
         if err != nil {
-            // Handle err
-            fmt.Println("ERROR when sending SEND CONN REQ")
+            log.Fatalf("Error occurred at control connection: %v\n", err)
         }
-
-        fmt.Println("SEND CONN REQ")
     }
 }
 
@@ -36,16 +32,16 @@ func StartClient(
     revNet string, revListenAddr string, // listen address for reverser server to connect 
 ) error {
     // Listen on both interfaces for incoming connections
-    clientListener, errC := net.Listen(clientNet, clientListenAddr)
-    if errC != nil {
-        // TODO: proper error logging
-        return errC
+    clientListener, err := net.Listen(clientNet, clientListenAddr)
+    if err != nil {
+        log.Printf("Cannot listen for client connections: %v\n", err)
+        return err
     }
 
-    revListener, errR := net.Listen(revNet, revListenAddr)
-    if errR != nil {
-        // TODO: proper error logging
-        return errR
+    revListener, err := net.Listen(revNet, revListenAddr)
+    if err != nil {
+        log.Printf("Cannot listen for server-side connections: %v\n", err)
+        return err
     }
 
     cliCh := make(chan net.Conn)
@@ -73,15 +69,16 @@ func StartClient(
         for {
             revConn, err := revListener.Accept()
             if err != nil {
-                // TODO: error handling
+                log.Fatalf("Error occurred when accepting server-side connection: %v\n", err)
             }
 
-            // TODO: logging
             if connCount {
                 ctrlCh <- revConn
                 connCount = false;
+                log.Println("Control connection accepted")
             } else {
                 revCh <- revConn
+                log.Println("Client connection accepted")
             }
         }
     } ()
@@ -91,11 +88,11 @@ func StartClient(
         for {
             cliConn, err := clientListener.Accept()
             if err != nil {
-                // TODO: error handling
+                log.Fatalf("Error occurred when accepting client connection: %v\n", err)
             }
 
-            // TODO: logging
             cliCh <- cliConn
+            log.Println("Reverser connection accepted")
         }
     } ()
 

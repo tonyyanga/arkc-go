@@ -3,6 +3,7 @@ package reverser
 import (
     "net"
     "sync"
+    "log"
 )
 
 //======================================================================
@@ -95,11 +96,11 @@ func handleRevConn(conn net.Conn, matcher *connPairMatcher, state *connState) {
     select {
     case err := <-err1:
         if err != nil {
-            // TODO: process err
+            log.Printf("Error occurred when copying from reverser to client: %v\n", err)
         }
     case err := <-err2:
         if err != nil {
-            // TODO: process err
+            log.Printf("Error occurred when copying from client to reverser: %v\n", err)
         }
     }
 

@@ -4,7 +4,7 @@ package reverser
 import (
     "net"
     "bufio"
-    "fmt"
+    "log"
 )
 
 //===========================================================================
@@ -24,12 +24,19 @@ type revServer struct {
 func (s *revServer) newConnection(finishChan chan byte) {
     revConn, err := net.Dial(s.revNet, s.revConnAddr)
     if err != nil {
-        // TODO:handle error
+        log.Printf("Error occurred when connecting to reverser client: %v\n", err)
+        return
     }
+    defer revConn.Close()
+    defer finishChan <- 1
+
     targetConn, err := net.Dial(s.targetNet, s.targetAddr)
     if err != nil {
-        // TODO:handle error
+        log.Printf("Error occurred when connecting to target address: %v\n", err)
+        return
     }
+    defer targetConn.Close()
+
 
     errChan := make(chan error)
 
@@ -38,11 +45,9 @@ func (s *revServer) newConnection(finishChan chan byte) {
 
     err = <-errChan
     if err != nil {
-        // TODO: handle error
+        log.Printf("Error occurred when copying data: %v\n", err)
+        return
     }
-    revConn.Close()
-    targetConn.Close()
-    finishChan <- 1
 }
 
 // This function starts individual goroutines which do connections
@@ -78,9 +83,10 @@ func (s *revServer) Start() error {
     // First start the control connection
     conn, err := net.Dial(s.revNet, s.revConnAddr)
     if err != nil {
-        // TODO: handle error
+        log.Printf("Error occurred when creating control connection: %v\n", err)
         return err
     }
+    defer conn.Close()
 
     // Connect to reverser client based on client's need
     go s.connect()
@@ -89,10 +95,11 @@ func (s *revServer) Start() error {
         r := bufio.NewReader(conn)
         requiredNum, err := r.ReadByte()
         if err != nil {
+            log.Printf("Error occurred when reading from control connection: %v\n", err)
             return err
         }
-        fmt.Println("receive updated required NUM")
 
+        log.Printf("Receive request for %d connections\n", requiredNum)
         s.state.UpdateClientCount(requiredNum)
     }
 
