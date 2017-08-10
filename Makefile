@@ -4,17 +4,21 @@ GOBUILDFLAGS =
 
 BIN_DIR = bin
 
-all: reverser
+TEST_BIN_DIR = ${BIN_DIR}/test
 
-reverser: bin/reverserClient bin/reverserServer
+all: test
 
-${BIN_DIR}/reverserClient: src/reverser/*.go src/reverserClient.go
-	go build ${GOBUILDFLAGS} -o ${BIN_DIR}/reverserClient src/reverserClient.go
+test: reverser_test
 
-${BIN_DIR}/reverserServer: src/reverser/*.go src/reverserServer.go
-	go build ${GOBUILDFLAGS} -o ${BIN_DIR}/reverserServer src/reverserServer.go
+reverser_test: ${TEST_BIN_DIR}/reverserClient ${TEST_BIN_DIR}/reverserServer
+
+${TEST_BIN_DIR}/reverserClient: src/reverser/*.go src/reverser/test/reverserClient.go
+	go build ${GOBUILDFLAGS} -o ${TEST_BIN_DIR}/reverserClient src/reverser/test/reverserClient.go
+
+${TEST_BIN_DIR}/reverserServer: src/reverser/*.go src/reverser/test/reverserServer.go
+	go build ${GOBUILDFLAGS} -o ${TEST_BIN_DIR}/reverserServer src/reverser/test/reverserServer.go
 
 clean:
-	rm -f ${BIN_DIR}/*
+	rm -rf ${BIN_DIR}/*
 
-.PHONY: all reverser clean
+.PHONY: all test reverser_test clean
