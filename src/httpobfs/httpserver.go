@@ -22,7 +22,7 @@ type HTTPServer struct {
 // | Session ID | Length | Data |
 // ------------------------------
 
-func (s *HTTPServer) ServeHTTPPost(w http.ResponseWriter, req *http.Request) {
+func (s *HTTPServer) serveHTTPPost(w http.ResponseWriter, req *http.Request) {
     var sessionID string
     // Handle request
     if req.ContentLength != 0 {
@@ -87,7 +87,7 @@ func (s *HTTPServer) ServeHTTPPost(w http.ResponseWriter, req *http.Request) {
 }
 
 // A simple function to handle GET requests
-func ServeHTTPGet(w http.ResponseWriter, req *http.Request) {
+func serveHTTPGet(w http.ResponseWriter, req *http.Request) {
     // TODO: write some fake contents
 }
 
@@ -95,9 +95,9 @@ func ServeHTTPGet(w http.ResponseWriter, req *http.Request) {
 func (s *HTTPServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
     // Follow easy path with HTTP GET
     if req.Method == http.MethodGet {
-        ServeHTTPGet(w, req)
+        serveHTTPGet(w, req)
     } else if req.Method == http.MethodPost {
-        s.ServeHTTPPost(w, req)
+        s.serveHTTPPost(w, req)
     } else {
         log.Printf("Error when handling HTTP request: unexpected HTTP method, %v %v from %v\n",
                    req.Method, req.URL, req.RemoteAddr)
