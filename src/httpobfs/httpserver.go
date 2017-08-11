@@ -29,6 +29,8 @@ func (s *HTTPServer) serveHTTPPost(w http.ResponseWriter, req *http.Request) {
         block, err := constructDataBlock(req.Body)
         if err != nil {
             log.Printf("Error when reading HTTP request from %v: %v\n", err, req.RemoteAddr)
+            http.Error(w, "Bad request.\n", http.StatusBadRequest)
+            return
         }
 
         if block.Length == NEW_SESSION {
@@ -48,6 +50,7 @@ func (s *HTTPServer) serveHTTPPost(w http.ResponseWriter, req *http.Request) {
     sendChan, exists := s.chanMap[sessionID]
     if !exists {
         log.Printf("Error: cannot find channel by session id")
+        http.Error(w, "Bad request.\n", http.StatusBadRequest)
         return
     }
 
@@ -87,7 +90,7 @@ func (s *HTTPServer) serveHTTPPost(w http.ResponseWriter, req *http.Request) {
 
 // A simple function to handle GET requests
 func serveHTTPGet(w http.ResponseWriter, req *http.Request) {
-    // TODO: write some fake contents
+    http.Error(w, "Bad request.\n", http.StatusBadRequest)
 }
 
 // Server implements the http.Handler interface to handle requests
@@ -100,6 +103,7 @@ func (s *HTTPServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
     } else {
         log.Printf("Error when handling HTTP request: unexpected HTTP method, %v %v from %v\n",
                    req.Method, req.URL, req.RemoteAddr)
+        http.Error(w, "Bad request.\n", http.StatusBadRequest)
     }
 }
 

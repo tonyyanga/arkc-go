@@ -82,7 +82,6 @@ func (c *HTTPClient) connect(sendChan chan *DataBlock) {
                 panic("Error when creating http request object")
             }
         case <- time.After(nextPollInterval):
-            // TODO: introduce polling interval based on data successful rate
             req, err := http.NewRequest("POST", c.url, nil)
             if err != nil {
                 panic("Error when creating http request object")
