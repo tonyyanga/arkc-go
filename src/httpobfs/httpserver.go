@@ -3,7 +3,6 @@ package httpobfs
 import (
     "net/http"
     "encoding/binary"
-    "time"
     "log"
 )
 
@@ -11,8 +10,8 @@ import (
 // components with DataBlock channels
 type HTTPServer struct {
     // User should handle RecvChan and SendChan DataBlocks
-    RecvChan chan DataBlock
-    SendChan chan DataBlock
+    RecvChan chan *DataBlock
+    SendChan chan *DataBlock
 }
 
 // HTTP payload structure:
@@ -23,33 +22,9 @@ type HTTPServer struct {
 func (s *HTTPServer) ServeHTTPPost(w http.ResponseWriter, req *http.Request) {
     // Handle request
     if req.ContentLength != 0 {
-        // Not empty request, need to read from Body
-        block := DataBlock{
-            SessionID: make([]byte, SessionIDLength),
-        }
-
-        // First read Session ID from payload
-        n, err := req.Body.Read(block.SessionID)
-        if n < SessionIDLength || err != nil {
-            log.Printf("Error when reading session id from HTTP request from %v\n", req.RemoteAddr)
-            return
-        }
-
-        // Next read Data length
-        err = binary.Read(req.Body, binary.BigEndian, block.Length)
+        block, err := constructDataBlock(req.Body)
         if err != nil {
-            log.Printf("Error when reading payload length from HTTP request from %v\n", req.RemoteAddr)
-            return
-        }
-
-        if block.Length > 0 {
-            // Finally read Data
-            block.Data = make([]byte, block.Length)
-            n, err = req.Body.Read(block.Data)
-            if n < block.Length || err != nil {
-                log.Printf("Error when reading data from HTTP request from %v\n", req.RemoteAddr)
-                return
-            }
+            log.Printf("Error when reading HTTP request from %v: %v\n", err, req.RemoteAddr)
         }
 
         s.RecvChan <- block
@@ -82,7 +57,8 @@ func (s *HTTPServer) ServeHTTPPost(w http.ResponseWriter, req *http.Request) {
                 return
             }
         }
-    case <- time.After(1 * time.Second):
+    //case <- time.After(1 * time.Millisecond):
+    default:
         w.Header().Set("Content-Length", "0")
     }
 }
@@ -97,14 +73,11 @@ func (s *HTTPServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
     // Follow easy path with HTTP GET
     if req.Method == http.MethodGet {
         ServeHTTPGet(w, req)
-        return
     } else if req.Method == http.MethodPost {
         s.ServeHTTPPost(w, req)
-        return
     } else {
         log.Printf("Error when handling HTTP request: unexpected HTTP method, %v %v from %v\n",
                    req.Method, req.URL, req.RemoteAddr)
-        return
     }
 }
 
