@@ -15,11 +15,11 @@ type HTTPClient struct {
     RecvChan chan *DataBlock
     SendChan chan *DataBlock
 
-    // Number of polling connection in parallel
-    Parallelism int
-
     url string
     errChan chan error
+
+    // chanMap maps session id to channel for input
+    chanMap map[string] chan *DataBlock
 }
 
 // HTTP payload structure:
@@ -27,19 +27,26 @@ type HTTPClient struct {
 // | Session ID | Length | Data |
 // ------------------------------
 
-func (c *HTTPClient) connect() {
+func (c *HTTPClient) connect(sendChan chan *DataBlock) {
     client := &http.Client{}
+    sessionEnded := false
     for {
+        if sessionEnded {
+            break
+        }
+
         var req *http.Request
 
         // construct HTTP request
         select {
-        case block := <-c.SendChan:
+        case block := <-sendChan:
             // Have data to send out
             // First, allocate buffer for data to send out
             bufLength := SessionIDLength + binary.Size(block.Length)
             if block.Length > 0 {
                 bufLength += block.Length
+            } else if block.Length == END_SESSION {
+                sessionEnded = true
             }
 
             // Write data to buffer
@@ -97,6 +104,18 @@ func (c *HTTPClient) connect() {
                 log.Printf("Error when reading from HTTP response: %v\n", err)
             }
 
+            if block.Length == END_SESSION {
+                sessionEnded = true
+            } else {
+                // verify the session id exists in chanMap
+                // server side is not supposed to create new connections
+                _, exists := c.chanMap[string(block.SessionID)]
+                if !exists {
+                    log.Printf("Error: Data block with unknown session id received")
+                    continue
+                }
+            }
+
             c.RecvChan <- block
         }
     }
@@ -107,9 +126,27 @@ func (c *HTTPClient) Start(url string) error {
     c.url = url
     c.errChan = make(chan error)
 
-    for i := 0; i < c.Parallelism; i++ {
-        go c.connect();
-    }
+    c.chanMap = make(map[string] chan *DataBlock)
 
-    return <- c.errChan
+    // Every goroutine only polls on one connection to avoid reordering
+    for {
+        block := <-c.SendChan
+        if block.Length == NEW_SESSION {
+            targetChan := make(chan *DataBlock, 10)
+            c.chanMap[string(block.SessionID)] = targetChan
+            go c.connect(targetChan)
+        }
+
+        targetChan, exists := c.chanMap[string(block.SessionID)]
+        if !exists {
+            panic("Attempt to send data without passing NEW_SESSION flag")
+        }
+
+        targetChan <- block
+
+        if block.Length == END_SESSION {
+            delete(c.chanMap, string(block.SessionID))
+        }
+    }
+    return nil
 }
