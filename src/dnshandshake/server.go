@@ -40,6 +40,8 @@ func handleDNS(w dns.ResponseWriter, r *dns.Msg) {
     w.WriteMsg(resp)
 }
 
+// listen for dns request that matches given domain, and send the handshake
+// query (of which domain is not included) to recv channel
 func Serve(domain string, // requests must be based on this domain
            net, listenAddr string, // Address for DNS server to listen for
            recv chan string, // channel where dns input is sent into
