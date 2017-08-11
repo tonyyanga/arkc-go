@@ -16,6 +16,7 @@ type HTTPClient struct {
     SendChan chan *DataBlock
 
     url string
+    client *http.Client
     errChan chan error
 
     // chanMap maps session id to channel for input
@@ -28,7 +29,6 @@ type HTTPClient struct {
 // ------------------------------
 
 func (c *HTTPClient) connect(sendChan chan *DataBlock) {
-    client := &http.Client{}
     sessionEnded := false
     for {
         if sessionEnded {
@@ -85,7 +85,7 @@ func (c *HTTPClient) connect(sendChan chan *DataBlock) {
         }
 
         // RoundTrip
-        resp, err := client.Do(req)
+        resp, err := c.client.Do(req)
         if err != nil {
             log.Printf("Error occurred in HTTP client roundtrip: %v\n", err)
             continue
@@ -121,10 +121,11 @@ func (c *HTTPClient) connect(sendChan chan *DataBlock) {
     }
 }
 
-// Start HTTP polling client
-func (c *HTTPClient) Start(url string) error {
+// Start HTTP polling client with the http.Client provided
+func (c *HTTPClient) StartWithHTTPClient(url string, client *http.Client) error {
     c.url = url
     c.errChan = make(chan error)
+    c.client = client
 
     c.chanMap = make(map[string] chan *DataBlock)
 
@@ -149,4 +150,9 @@ func (c *HTTPClient) Start(url string) error {
         }
     }
     return nil
+}
+
+// Start HTTP polling client with default http.Client
+func (c *HTTPClient) Start(url string) error {
+    return c.StartWithHTTPClient(url, &http.Client{})
 }
