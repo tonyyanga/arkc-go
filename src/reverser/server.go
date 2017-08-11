@@ -4,6 +4,7 @@ package reverser
 import (
     "net"
     "bufio"
+    "io"
     "log"
 )
 
@@ -11,18 +12,37 @@ import (
 // revServer contains properties of the reverser server and does actual
 // networking operations
 type revServer struct {
+    // Default methods to describe connections
     targetNet string
     targetAddr string
     revNet string
     revConnAddr string
 
+    // These two functions can be used to read / write to customized io Channel
+    dialRevAddr func() (io.ReadWriteCloser, error)
+    dialTargetAddr func() (io.ReadWriteCloser, error)
+
     state *connState
+}
+
+// Default function to get connection to revConnAddr
+func (s *revServer) getDefaultDialRevAddr() func() (io.ReadWriteCloser, error) {
+    return func() (io.ReadWriteCloser, error) {
+        return net.Dial(s.revNet, s.revConnAddr)
+    }
+}
+
+// Default function to get connection to targetAddr
+func (s *revServer) getDefaultDialTargetAddr() func() (io.ReadWriteCloser, error) {
+    return func() (io.ReadWriteCloser, error) {
+        return net.Dial(s.targetNet, s.targetAddr)
+    }
 }
 
 // This function does an individual connection and send 1 to finishChan
 // channel
 func (s *revServer) newConnection(finishChan chan byte) {
-    revConn, err := net.Dial(s.revNet, s.revConnAddr)
+    revConn, err := s.dialRevAddr()
     if err != nil {
         log.Printf("Error occurred when connecting to reverser client: %v\n", err)
         return
@@ -30,7 +50,7 @@ func (s *revServer) newConnection(finishChan chan byte) {
     defer revConn.Close()
     defer func() {finishChan <- 1} ()
 
-    targetConn, err := net.Dial(s.targetNet, s.targetAddr)
+    targetConn, err := s.dialTargetAddr()
     if err != nil {
         log.Printf("Error occurred when connecting to target address: %v\n", err)
         return
@@ -82,7 +102,7 @@ func (s *revServer) connect() {
 // Start the reverser server
 func (s *revServer) Start() error {
     // First start the control connection
-    conn, err := net.Dial(s.revNet, s.revConnAddr)
+    conn, err := s.dialRevAddr()
     if err != nil {
         log.Printf("Error occurred when creating control connection: %v\n", err)
         return err
@@ -120,6 +140,29 @@ func StartServer(
         targetAddr: tAddr,
         revNet: rNet,
         revConnAddr: rConnAddr,
+
+        state: &connState{
+            clientCount: 0,
+            updateChan: make(chan byte, 5),
+        },
+    }
+
+    server.dialRevAddr = server.getDefaultDialRevAddr()
+    server.dialTargetAddr = server.getDefaultDialTargetAddr()
+
+    return server.Start()
+}
+
+// This function starts the server of the reverser and will block unless an error occurred
+// Run this fucnction in a goroutine
+func StartServerWithDialerFunc(
+    targetDialer func() (io.ReadWriteCloser, error), // dialer function for channel to target
+    revDialer func() (io.ReadWriteCloser, error), // dialer function for channel to reverser client
+) error {
+
+    server := &revServer{
+        dialRevAddr: revDialer,
+        dialTargetAddr: targetDialer,
 
         state: &connState{
             clientCount: 0,
