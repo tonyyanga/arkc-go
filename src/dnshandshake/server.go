@@ -2,11 +2,13 @@ package dnshandshake
 
 import (
     "log"
+    "strings"
     "crypto/rand"
     "github.com/miekg/dns"
 )
 
 var recvChan chan string
+var dom string // e.g. "google.com"
 
 func handleDNS(w dns.ResponseWriter, r *dns.Msg) {
     resp := new(dns.Msg)
@@ -33,7 +35,7 @@ func handleDNS(w dns.ResponseWriter, r *dns.Msg) {
         }
 
         resp.Answer = append(resp.Answer, record)
-        recvChan <- r.Question[0].Name
+        recvChan <- strings.Trim(r.Question[0].Name[:len(r.Question[0].Name) - len(dom) - 1], ". ")
     }
     w.WriteMsg(resp)
 }
@@ -43,6 +45,7 @@ func Serve(domain string, // requests must be based on this domain
            recv chan string, // channel where dns input is sent into
        ) error {
     recvChan = recv
+    dom = strings.Trim(domain, ". ")
 
     dns.HandleFunc(domain, handleDNS)
     server := &dns.Server{
