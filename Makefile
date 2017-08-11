@@ -12,11 +12,15 @@ test: reverser_test dnshandshake_test
 
 reverser_test: ${TEST_BIN_DIR}/reverserClient ${TEST_BIN_DIR}/reverserServer
 
-dnshandshake_test: ${TEST_BIN_DIR}/dns_server
+dnshandshake_test: ${TEST_BIN_DIR}/dns_server ${TEST_BIN_DIR}/test_dns_client
 
 ${TEST_BIN_DIR}/dns_server: src/dnshandshake/*.go src/dnshandshake/test/dns_server.go
 	go get github.com/miekg/dns
 	go build ${GOBUILDFLAGS} -o ${TEST_BIN_DIR}/dns_server src/dnshandshake/test/dns_server.go
+
+${TEST_BIN_DIR}/test_dns_client: src/dnshandshake/*.go src/dnshandshake/test/test_dns_client.go
+	go get github.com/miekg/dns
+	go build ${GOBUILDFLAGS} -o ${TEST_BIN_DIR}/test_dns_client src/dnshandshake/test/test_dns_client.go
 
 ${TEST_BIN_DIR}/reverserClient: src/reverser/*.go src/reverser/test/reverserClient.go
 	go build ${GOBUILDFLAGS} -o ${TEST_BIN_DIR}/reverserClient src/reverser/test/reverserClient.go
