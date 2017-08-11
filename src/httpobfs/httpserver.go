@@ -80,7 +80,6 @@ func (s *HTTPServer) serveHTTPPost(w http.ResponseWriter, req *http.Request) {
         } else if block.Length == END_SESSION {
             delete(s.chanMap, sessionID)
         }
-    //case <- time.After(1 * time.Millisecond):
     default:
         w.Header().Set("Content-Length", "0")
     }

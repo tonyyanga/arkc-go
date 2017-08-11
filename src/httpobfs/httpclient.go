@@ -4,8 +4,14 @@ import (
     "encoding/binary"
     "net/http"
     "bytes"
+    "time"
 
     "log"
+)
+
+const (
+    minPollInterval = 100 * time.Millisecond
+    maxPollInterval = 1 * time.Second
 )
 
 // An HTTP client does polling via HTTP/HTTPS connections, and interact with other
@@ -29,7 +35,8 @@ type HTTPClient struct {
 // ------------------------------
 
 func (c *HTTPClient) connect(sendChan chan *DataBlock) {
-    sessionEnded := false
+    sessionEnded := false // whether END_SESSION is issued
+    var nextPollInterval time.Duration = 0 // Polling interval
     for {
         if sessionEnded {
             break
@@ -74,8 +81,7 @@ func (c *HTTPClient) connect(sendChan chan *DataBlock) {
             if err != nil {
                 panic("Error when creating http request object")
             }
-        //case <- time.After(1 * time.Millisecond):
-        default:
+        case <- time.After(nextPollInterval):
             // TODO: introduce polling interval based on data successful rate
             req, err := http.NewRequest("POST", c.url, nil)
             if err != nil {
@@ -117,6 +123,17 @@ func (c *HTTPClient) connect(sendChan chan *DataBlock) {
             }
 
             c.RecvChan <- block
+
+            nextPollInterval = 0 // immediate poll since data is returned
+        } else {
+            if nextPollInterval == 0 {
+                nextPollInterval = minPollInterval
+            } else {
+                nextPollInterval = 2 * nextPollInterval
+                if nextPollInterval > maxPollInterval {
+                    nextPollInterval = maxPollInterval
+                }
+            }
         }
     }
 }
