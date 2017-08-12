@@ -11,10 +11,13 @@ all: prep dnsreverser test
 prep:
 	go get github.com/miekg/dns
 
-dnsreverser: prep ${BIN_DIR}/dnsreverser_client
+dnsreverser: prep ${BIN_DIR}/dnsreverser_client ${BIN_DIR}/dnsreverser_server
 
 ${BIN_DIR}/dnsreverser_client: src/dnsreverser_client.go src/dnshandshake/*.go src/reverser/*.go
 	go build ${GOBUILDFLAGS} -o ${BIN_DIR}/dnsreverser_client src/dnsreverser_client.go
+
+${BIN_DIR}/dnsreverser_server: src/dnsreverser_server.go src/dnshandshake/*.go src/reverser/*.go
+	go build ${GOBUILDFLAGS} -o ${BIN_DIR}/dnsreverser_server src/dnsreverser_server.go
 
 test: prep reverser_test dnshandshake_test
 
@@ -39,4 +42,4 @@ clean:
 	rm -rf pkg/*
 	rm -rf src/github.com/
 
-.PHONY: all test reverser_test dnshandshake_test clean
+.PHONY: all test prep dnsreverser reverser_test dnshandshake_test clean
