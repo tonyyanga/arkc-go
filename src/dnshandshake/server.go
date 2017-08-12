@@ -3,7 +3,7 @@ package dnshandshake
 import (
     "log"
     "strings"
-    "crypto/rand"
+    "math/rand"
     "github.com/miekg/dns"
 )
 
@@ -24,6 +24,8 @@ func handleDNS(w dns.ResponseWriter, r *dns.Msg) {
         if n != 4 || err != nil {
             panic("Unexpected error when generating response")
         }
+
+        // TODO: should include SOA record if this server will "act like" SOA
         record := &dns.A{
             Hdr: dns.RR_Header{
                 Name: r.Question[0].Name,
