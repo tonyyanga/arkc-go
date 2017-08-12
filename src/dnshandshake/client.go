@@ -11,6 +11,9 @@ func SendRequest(query string, domain string, serverAddr string) (string, error)
     m.SetQuestion(dns.Fqdn(query + "." + domain), dns.TypeA)
 
     resp, err := dns.Exchange(m, serverAddr)
+    if err != nil {
+        return "ERROR", err
+    }
     if len(resp.Answer) > 0 {
         return resp.Answer[0].String(), err
     } else {
