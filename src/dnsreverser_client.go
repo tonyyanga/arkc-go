@@ -5,6 +5,7 @@ package main
 
 import (
     "net"
+    "time"
 
     "dnshandshake"
     "reverser"
@@ -29,14 +30,17 @@ func main() {
     // TODO: handle encoding error
     query, _ := dnshandshake.EncodeAddr(net.ParseIP(myIP), myPort)
 
-    // TODO: handle potential error
-    go func() {
-        dnshandshake.SendRequest(query, dnsQueryDomain, dnsServerAddr)
-    } ()
+    for {
+        // TODO: handle potential error
+        go func() {
+            dnshandshake.SendRequest(query, dnsQueryDomain, dnsServerAddr)
+        } ()
 
-    // TODO: handle error
-    reverser.StartClient(
-        clientNet, clientListenAddr,
-        revNet, revListenAddr,
-    )
+        // TODO: handle error
+        reverser.StartClient(
+            clientNet, clientListenAddr,
+            revNet, revListenAddr,
+            1 * time.Second,
+        )
+    }
 }

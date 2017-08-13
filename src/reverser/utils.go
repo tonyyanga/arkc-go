@@ -3,6 +3,7 @@ package reverser
 import (
     "io"
     "sync"
+    "time"
 )
 
 // Do io.Copy from src to dst, and return err to errChan channel
@@ -47,7 +48,12 @@ func (state *connState) UpdateClientCount(num byte) {
 
 // Block for update on client count, and return client count
 func (state *connState) WaitForUpdate() byte {
-    return <-state.updateChan
+    select {
+    case count := <-state.updateChan:
+        return count
+    case <- time.After(1 * time.Second): // TODO: avoid magic number
+        return state.clientCount
+    }
 }
 
 // Return raw channel that receives client count updates
