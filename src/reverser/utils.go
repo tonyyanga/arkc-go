@@ -51,7 +51,7 @@ func (state *connState) WaitForUpdate() byte {
     select {
     case count := <-state.updateChan:
         return count
-    case <- time.After(1 * time.Second): // TODO: avoid magic number
+    case <- time.After(10 * time.Second): // TODO: avoid magic number
         return state.clientCount
     }
 }

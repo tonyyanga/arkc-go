@@ -81,7 +81,8 @@ func StartClient(
         for {
             revConn, err := revListener.Accept()
             if err != nil {
-                log.Fatalf("Error occurred when accepting server-side connection: %v\n", err)
+                log.Printf("Error occurred when accepting server-side connection: %v\n", err)
+                return
             }
 
             if connCount {
@@ -109,7 +110,8 @@ func StartClient(
         for {
             cliConn, err := clientListener.Accept()
             if err != nil {
-                log.Fatalf("Error occurred when accepting client connection: %v\n", err)
+                log.Printf("Error occurred when accepting client connection: %v\n", err)
+                return
             }
 
             cliCh <- cliConn
