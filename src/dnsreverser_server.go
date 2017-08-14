@@ -15,8 +15,8 @@ import (
 func main() {
     // TODO: args should come from command line
     dnsListenNet := "udp"
-    dnsListenAddr := "127.0.0.1:10053"
-    dnsQueryDomain := "google.com"
+    dnsListenAddr := ":10053"
+    dnsQueryDomain := "baidu.com"
 
     targetNet := "tcp"
     targetAddr := "127.0.0.1:3128"

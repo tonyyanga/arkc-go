@@ -3,6 +3,8 @@ package dnshandshake
 import (
     "errors"
     "net"
+    "net/http"
+    "bufio"
 
     "encoding/base32"
     "encoding/binary"
@@ -34,3 +36,17 @@ func DecodeAddr(input string) (net.IP, uint16 /* port */, error) {
 
 }
 
+func GetExternalIP() (net.IP, error) {
+    resp, err := http.Get("http://ipv4.myexternalip.com/raw")
+    if err != nil || resp.StatusCode != 200 {
+        return nil, errors.New("Fail to get external IP via myexternalip.com")
+    }
+
+    respReader := bufio.NewReader(resp.Body)
+    ip, finished, err := respReader.ReadLine()
+    if finished || err != nil {
+        return nil, errors.New("Cannot parse myexternalip.com response")
+    }
+
+    return net.ParseIP(string(ip)), nil
+}
