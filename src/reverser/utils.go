@@ -60,5 +60,10 @@ func (state *connState) WaitForUpdate() byte {
 func (state *connState) GetUpdateChan() chan byte {
     return state.updateChan
 }
+
+// Close the update channel
+func (state *connState) CloseChan() {
+    close(state.updateChan)
+}
 //===========================================================================
 

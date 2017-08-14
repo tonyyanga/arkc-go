@@ -77,11 +77,16 @@ func (s *revServer) connect() {
     finishChan := make(chan byte)
     var activeConn byte = 0
     var requiredNum byte = 0
+    var more bool
 
     for {
         // Receive update about connection number
         select{
-        case requiredNum = <-s.state.GetUpdateChan():
+        case requiredNum, more = <-s.state.GetUpdateChan():
+            if !more {
+                // closing update channel means no more connections
+                return
+            }
 
         case <-finishChan:
             activeConn--
@@ -108,6 +113,7 @@ func (s *revServer) Start() error {
         return err
     }
     defer conn.Close()
+    defer s.state.CloseChan()
 
     // Connect to reverser client based on client's need
     go s.connect()

@@ -67,6 +67,7 @@ func StartClient(
         reverserConnChan: make(chan net.Conn, 1),
         connPairChan: make(chan connPair),
     }
+    defer pairMatcher.Close()
 
     state := &connState{
         clientCount: 0,

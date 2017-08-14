@@ -3,6 +3,7 @@ package reverser
 import (
     "net"
     "sync"
+    "errors"
     "log"
 )
 
@@ -26,7 +27,7 @@ type connPairMatcher struct {
 }
 
 // Get a pair for client connection submitted, blocking
-func (matcher *connPairMatcher) GetClientConnPair(conn net.Conn) connPair {
+func (matcher *connPairMatcher) GetClientConnPair(conn net.Conn) (*connPair, error) {
     // TODO: simplify this by using fewer channels
     // TODO: critical section seems to be flawed
     matcher.mux.Lock()
@@ -38,16 +39,21 @@ func (matcher *connPairMatcher) GetClientConnPair(conn net.Conn) connPair {
         }
         matcher.connPairChan <- pair
         matcher.mux.Unlock()
-        return pair
+        return &pair, nil
     default:
         matcher.mux.Unlock()
         matcher.clientConnChan <- conn
-        return <-matcher.connPairChan
+        pair, more := <-matcher.connPairChan
+        if !more {
+            return nil, errors.New("Closed channel")
+        } else {
+            return &pair, nil
+        }
     }
 }
 
 // Get a pair for reverser connection submitted, blocking
-func (matcher *connPairMatcher) GetReverserConnPair(conn net.Conn) connPair {
+func (matcher *connPairMatcher) GetReverserConnPair(conn net.Conn) (*connPair, error) {
     // TODO: simplify this by using fewer channels
     matcher.mux.Lock()
     select {
@@ -58,12 +64,24 @@ func (matcher *connPairMatcher) GetReverserConnPair(conn net.Conn) connPair {
         }
         matcher.connPairChan <- pair
         matcher.mux.Unlock()
-        return pair
+        return &pair, nil
     default:
         matcher.mux.Unlock()
         matcher.reverserConnChan <- conn
-        return <-matcher.connPairChan
+        pair, more := <-matcher.connPairChan
+        if !more {
+            return nil, errors.New("Closed channel")
+        } else {
+            return &pair, nil
+        }
     }
+}
+
+// Close the matching pair channel
+func (matcher *connPairMatcher) Close() {
+    matcher.mux.Lock()
+    close(matcher.connPairChan)
+    matcher.mux.Unlock()
 }
 
 //=============================END=====================================
@@ -72,7 +90,11 @@ func (matcher *connPairMatcher) GetReverserConnPair(conn net.Conn) connPair {
 func handleClientConn(conn net.Conn, matcher *connPairMatcher, state *connState) {
     state.AddClientCount()
     // Get connPair for this connection
-    matcher.GetClientConnPair(conn)
+    _, err := matcher.GetClientConnPair(conn)
+    if err != nil {
+        // pair matcher closed, close conn immediately
+        conn.Close()
+    }
 
     // do nothing because handleRevConn will handle data on both directions
     return
@@ -81,7 +103,11 @@ func handleClientConn(conn net.Conn, matcher *connPairMatcher, state *connState)
 // Handler for reverser server side connections
 func handleRevConn(conn net.Conn, matcher *connPairMatcher, state *connState) {
     // Get connPair for this connection
-    pair := matcher.GetReverserConnPair(conn)
+    pair, err := matcher.GetReverserConnPair(conn)
+    if err != nil {
+        // pair matcher closed, close connection immediately
+        conn.Close()
+    }
 
     // error when copying from reverser to client, i.e. EOF from reverser
     err1 := make(chan error)
