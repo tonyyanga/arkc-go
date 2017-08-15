@@ -12,7 +12,7 @@ import (
 
 const SessionIDLength = 16 // Length of session id
 
-type SessionState int
+const DefaultBlockLength = 4096
 
 // Enum of possible session state
 const (

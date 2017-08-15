@@ -23,7 +23,6 @@ type HTTPClient struct {
 
     url string
     client *http.Client
-    errChan chan error
 
     // chanMap maps session id to channel for input
     chanMap map[string] chan *DataBlock
@@ -140,7 +139,6 @@ func (c *HTTPClient) connect(sendChan chan *DataBlock) {
 // Start HTTP polling client with the http.Client provided
 func (c *HTTPClient) StartWithHTTPClient(url string, client *http.Client) error {
     c.url = url
-    c.errChan = make(chan error)
     c.client = client
 
     c.chanMap = make(map[string] chan *DataBlock)
