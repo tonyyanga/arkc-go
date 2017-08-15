@@ -121,6 +121,7 @@ func (s *HTTPServer) dispatch() {
 
 // Call this function to listen for HTTP request
 func (s *HTTPServer) ListenAndServe(listenAddr string) error {
+    s.chanMap = make(map[string] chan *DataBlock)
     go s.dispatch()
     err := http.ListenAndServe(listenAddr, s)
     log.Printf("Error occurred when listening for HTTP input: %v\n", err)
@@ -129,6 +130,7 @@ func (s *HTTPServer) ListenAndServe(listenAddr string) error {
 
 // Call this function to listen for HTTPS request
 func (s *HTTPServer) ListenAndServeTLS(listenAddr, certPath, keyPath string) error {
+    s.chanMap = make(map[string] chan *DataBlock)
     go s.dispatch()
     err := http.ListenAndServeTLS(listenAddr, certPath, keyPath, s)
     log.Printf("Error occurred when listening for HTTPS input: %v\n", err)

@@ -26,10 +26,7 @@ func Serve(domain string, // requests must be based on this domain
             // correct request type
             // return random IP and send query string to recvChan
             ip := make([]byte, 4)
-            n, err := rand.Read(ip)
-            if n != 4 || err != nil {
-                panic("Unexpected error when generating response")
-            }
+            rand.Read(ip)
 
             // TODO: should include SOA record if this server will "act like" SOA
             record := &dns.A{
