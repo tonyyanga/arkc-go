@@ -6,8 +6,6 @@ import (
     "io"
     "errors"
     "encoding/binary"
-
-    //"log"
 )
 
 // This file provides common data structures used across this package
@@ -38,9 +36,9 @@ func constructDataBlock(body io.Reader) (*DataBlock, error) {
     }
 
     // First read Session ID from payload
-    n, err := body.Read(block.SessionID)
-    if n < SessionIDLength || err != nil {
-        return nil, errors.New("Error when reading session id")
+    _, err := io.ReadFull(body, block.SessionID)
+    if err != nil {
+        return nil, err
     }
 
     // Next read Data length
@@ -52,10 +50,8 @@ func constructDataBlock(body io.Reader) (*DataBlock, error) {
     if block.Length > 0 {
         // Finally read Data
         block.Data = make([]byte, block.Length)
-        n, err = body.Read(block.Data)
-        if int32(n) < block.Length {
-            return nil, errors.New("Error when reading data: input shorter than enough")
-        } else if (err != nil && err != io.EOF) {
+        _, err = io.ReadFull(body, block.Data)
+        if err != nil {
             return nil, err
         }
     //} else if block.Length < 0 {

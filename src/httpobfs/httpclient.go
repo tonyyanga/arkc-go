@@ -128,25 +128,26 @@ func (c *HTTPClient) connect(id []byte, sendChan chan *DataBlock) {
             block, err := constructDataBlock(resp.Body)
             if err != nil {
                 log.Printf("Error when reading from HTTP response: %v\n", err)
-            }
-
-            if block.Length == END_SESSION {
-                sessionEnded = true
             } else {
-                // verify the session id exists in chanMap
-                // server side is not supposed to create new connections
-                c.mux.RLock()
-                _, exists := c.chanMap[string(block.SessionID)]
-                c.mux.RUnlock()
-                if !exists {
-                    log.Printf("Error: Data block with unknown session id received")
-                    continue
+
+                if block.Length == END_SESSION {
+                    sessionEnded = true
+                } else {
+                    // verify the session id exists in chanMap
+                    // server side is not supposed to create new connections
+                    c.mux.RLock()
+                    _, exists := c.chanMap[string(block.SessionID)]
+                    c.mux.RUnlock()
+                    if !exists {
+                        log.Printf("Error: Data block with unknown session id received")
+                        continue
+                    }
                 }
+
+                c.RecvChan <- block
+
+                nextPollInterval = 0 // immediate poll since data is returned
             }
-
-            c.RecvChan <- block
-
-            nextPollInterval = 0 // immediate poll since data is returned
         }
         resp.Body.Close()
     }
