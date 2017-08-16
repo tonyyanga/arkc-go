@@ -6,6 +6,8 @@ import (
     "io"
     "errors"
     "encoding/binary"
+
+    "fmt"
 )
 
 // This file provides common data structures used across this package
@@ -48,6 +50,7 @@ func constructDataBlock(body io.Reader) (*DataBlock, error) {
     }
 
     if block.Length > 0 {
+        fmt.Printf("CONSTRUCT block length %v\n", block.Length)
         // Finally read Data
         block.Data = make([]byte, block.Length)
         n, err = body.Read(block.Data)

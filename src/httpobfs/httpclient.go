@@ -108,7 +108,7 @@ func (c *HTTPClient) connect(id []byte, sendChan chan *DataBlock) {
             continue
         }
 
-        if resp.ContentLength > 0 {
+        if resp.ContentLength > 0 || resp.ContentLength == -1 {
             // Not empty response
             block, err := constructDataBlock(resp.Body)
             if err != nil {

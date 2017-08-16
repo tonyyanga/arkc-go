@@ -73,7 +73,7 @@ func (s *HTTPServer) serveHTTPPost(w http.ResponseWriter, req *http.Request) {
     case block := <-sendChan:
         // Successfully get data to send as response
         n, err := w.Write(block.SessionID)
-        if n < SessionIDLength || err != nil {
+        if n != SessionIDLength || err != nil {
             log.Printf("Error when writing session id to HTTP resp to %v\n", req.RemoteAddr)
             sendChan <- block
             return
@@ -89,6 +89,7 @@ func (s *HTTPServer) serveHTTPPost(w http.ResponseWriter, req *http.Request) {
         if block.Length > 0 {
             // Finally read Data
             _, err = w.Write(block.Data[:block.Length])
+            log.Printf("Send resp with length %v\n", block.Length)
             if err != nil {
                 log.Printf("Error when writing data to HTTP resp to %v\n", req.RemoteAddr)
                 sendChan <- block
