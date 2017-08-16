@@ -3,8 +3,6 @@ package httpobfs
 import (
     "math/rand"
     "net"
-
-    "log"
 )
 
 // This function generates a random session id
@@ -28,7 +26,6 @@ func handleConnRead(id []byte, conn net.Conn, sendChan chan *DataBlock, errChan 
             Data: buf,
         }
         sendChan <- block
-        log.Printf("conn Read finished for length %v\n", n)
     }
 }
 
@@ -42,7 +39,6 @@ func handleConnWrite(id []byte, conn net.Conn, recvChan chan *DataBlock, errChan
         } else {
             // regular connection data
             _, err := conn.Write(block.Data[:block.Length])
-            log.Printf("conn Write finished for length %v\n", block.Length)
             if err != nil {
                 errChan <- err
             }
