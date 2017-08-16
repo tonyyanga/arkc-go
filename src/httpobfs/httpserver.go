@@ -36,6 +36,7 @@ func (s *HTTPServer) serveHTTPPost(w http.ResponseWriter, req *http.Request) {
         }
 
         if block.Length == NEW_SESSION {
+            //log.Printf("Server side NEW_SESSION %v\n", block.SessionID)
             sendChan := make(chan *DataBlock, 10)
             s.mux.Lock()
             s.chanMap[string(block.SessionID)] = sendChan

@@ -37,7 +37,7 @@ type HTTPClient struct {
 
 func (c *HTTPClient) connect(id []byte, sendChan chan *DataBlock) {
     sessionEnded := false // whether END_SESSION is issued
-    var nextPollInterval time.Duration = 0 // Polling interval
+    var nextPollInterval time.Duration = minPollInterval // Polling interval
     var err error
     for {
         if sessionEnded {
@@ -177,6 +177,7 @@ func (c *HTTPClient) StartWithHTTPClient(url string, client *http.Client) {
             panic("Attempt to send data without passing NEW_SESSION flag")
         }
 
+        //log.Printf("Client side NEW_SESSION %v\n", block.SessionID)
         targetChan <- block
 
         if block.Length == END_SESSION {

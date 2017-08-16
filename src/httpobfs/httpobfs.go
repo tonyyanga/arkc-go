@@ -6,6 +6,8 @@ import (
     "io"
     "errors"
     "encoding/binary"
+
+    //"log"
 )
 
 // This file provides common data structures used across this package
@@ -56,6 +58,8 @@ func constructDataBlock(body io.Reader) (*DataBlock, error) {
         } else if (err != nil && err != io.EOF) {
             return nil, err
         }
+    //} else if block.Length < 0 {
+    //    log.Printf("Length %v at Session ID %v\n", block.Length, block.SessionID)
     }
 
     return block, nil
