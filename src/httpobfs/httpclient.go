@@ -38,6 +38,7 @@ type HTTPClient struct {
 func (c *HTTPClient) connect(id []byte, sendChan chan *DataBlock) {
     sessionEnded := false // whether END_SESSION is issued
     var nextPollInterval time.Duration = 0 // Polling interval
+    var err error
     for {
         if sessionEnded {
             break
@@ -73,7 +74,6 @@ func (c *HTTPClient) connect(id []byte, sendChan chan *DataBlock) {
                 panic("Error when creating http request object")
             }
         case <- time.After(nextPollInterval):
-            var err error
             buf.Write(id)
             err = binary.Write(buf, binary.BigEndian, NO_DATA)
             if err != nil {
@@ -99,15 +99,30 @@ func (c *HTTPClient) connect(id []byte, sendChan chan *DataBlock) {
         resp, err := c.client.Do(req)
         if err != nil {
             log.Printf("Error occurred in HTTP client roundtrip: %v\n", err)
-            continue
+
+            // Issue END_SESSION to recvChan and return
+            block := &DataBlock{
+                SessionID: id,
+                Length: END_SESSION,
+            }
+            c.RecvChan <- block
+            return
+        }
+
+        if resp.StatusCode != 200 {
+            log.Printf("Error occurred: roundtrip resp status code is not OK: %v\n", resp.StatusCode)
+
+            // Issue END_SESSION to recvChan and return
+            block := &DataBlock{
+                SessionID: id,
+                Length: END_SESSION,
+            }
+            c.RecvChan <- block
+            resp.Body.Close()
+            return
         }
 
         // Process resp
-        if resp.StatusCode != 200 {
-            log.Printf("Error occurred: roundtrip resp status code is not OK: %v\n", resp.StatusCode)
-            continue
-        }
-
         if resp.ContentLength > 0 || resp.ContentLength == -1 {
             // Not empty response
             block, err := constructDataBlock(resp.Body)
@@ -133,6 +148,7 @@ func (c *HTTPClient) connect(id []byte, sendChan chan *DataBlock) {
 
             nextPollInterval = 0 // immediate poll since data is returned
         }
+        resp.Body.Close()
     }
 }
 
