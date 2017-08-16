@@ -4,6 +4,7 @@ import (
     "net/http"
     "encoding/binary"
     "log"
+    "sync"
 )
 
 // An HTTP server handles incoming HTTP/HTTPS connections, and interact with other
@@ -15,6 +16,7 @@ type HTTPServer struct {
 
     // maps session id to send channels
     chanMap map[string] chan *DataBlock
+    mux sync.RWMutex
 }
 
 // HTTP payload structure:
@@ -35,19 +37,31 @@ func (s *HTTPServer) serveHTTPPost(w http.ResponseWriter, req *http.Request) {
 
         if block.Length == NEW_SESSION {
             sendChan := make(chan *DataBlock, 10)
+            s.mux.Lock()
             s.chanMap[string(block.SessionID)] = sendChan
+            s.mux.Unlock()
         }
 
-        s.RecvChan <- block
+        if block.Length != NO_DATA {
+            s.RecvChan <- block
+        }
         sessionID = string(block.SessionID)
 
         if block.Length == END_SESSION {
+            s.mux.Lock()
             delete(s.chanMap, sessionID)
+            s.mux.Unlock()
             return
         }
+    } else {
+        log.Println("HTTP Server empty req")
+        http.Error(w, "Bad request.\n", http.StatusBadRequest)
+        return
     }
 
+    s.mux.RLock()
     sendChan, exists := s.chanMap[sessionID]
+    s.mux.RUnlock()
     if !exists {
         log.Printf("Error: cannot find channel by session id")
         http.Error(w, "Bad request.\n", http.StatusBadRequest)
@@ -74,14 +88,16 @@ func (s *HTTPServer) serveHTTPPost(w http.ResponseWriter, req *http.Request) {
 
         if block.Length > 0 {
             // Finally read Data
-            n, err = w.Write(block.Data)
-            if n < block.Length || err != nil {
+            _, err = w.Write(block.Data[:block.Length])
+            if err != nil {
                 log.Printf("Error when writing data to HTTP resp to %v\n", req.RemoteAddr)
                 sendChan <- block
                 return
             }
         } else if block.Length == END_SESSION {
+            s.mux.Lock()
             delete(s.chanMap, sessionID)
+            s.mux.Unlock()
         }
     default:
         w.Header().Set("Content-Length", "0")
@@ -110,7 +126,9 @@ func (s *HTTPServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 func (s *HTTPServer) dispatch() {
     for {
         block := <-s.SendChan
+        s.mux.RLock()
         targetChan, exists := s.chanMap[string(block.SessionID)]
+        s.mux.RUnlock()
         if !exists {
             log.Printf("Error: cannot find channel by session id")
             continue

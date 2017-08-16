@@ -16,8 +16,9 @@ const DefaultBlockLength = 4096
 
 // Enum of possible session state
 const (
-    NEW_SESSION int = -1
-    END_SESSION int = -2
+    NO_DATA int32 = 0
+    NEW_SESSION int32 = -1
+    END_SESSION int32 = -2
 
     SESSION_STATE_NUM = iota
 )
@@ -25,7 +26,7 @@ const (
 // DataBlock is used to communicate between different interfaces
 type DataBlock struct {
     SessionID []byte // Every conceptual stream has its unique SessionID
-    Length int // If positive, length of Data; if negative, follow above enum
+    Length int32 // If positive, length of Data; if negative, follow above enum
     Data []byte
 }
 
@@ -41,7 +42,7 @@ func constructDataBlock(body io.Reader) (*DataBlock, error) {
     }
 
     // Next read Data length
-    err = binary.Read(body, binary.BigEndian, block.Length)
+    err = binary.Read(body, binary.BigEndian, &block.Length)
     if err != nil {
         return nil, errors.New("Error when reading payload length")
     }
@@ -50,8 +51,10 @@ func constructDataBlock(body io.Reader) (*DataBlock, error) {
         // Finally read Data
         block.Data = make([]byte, block.Length)
         n, err = body.Read(block.Data)
-        if n < block.Length || err != nil {
-            return nil, errors.New("Error when reading data")
+        if int32(n) < block.Length {
+            return nil, errors.New("Error when reading data: input shorter than enough")
+        } else if (err != nil && err != io.EOF) {
+            return nil, err
         }
     }
 

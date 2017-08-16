@@ -22,7 +22,7 @@ func handleConnRead(id []byte, conn net.Conn, sendChan chan *DataBlock, errChan 
         }
         block := &DataBlock{
             SessionID: id,
-            Length: n,
+            Length: int32(n),
             Data: buf,
         }
         sendChan <- block
@@ -38,7 +38,7 @@ func handleConnWrite(id []byte, conn net.Conn, recvChan chan *DataBlock, errChan
             return
         } else {
             // regular connection data
-            _, err := conn.Write(block.Data)
+            _, err := conn.Write(block.Data[:block.Length])
             if err != nil {
                 errChan <- err
             }

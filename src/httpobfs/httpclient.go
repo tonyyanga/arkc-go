@@ -5,6 +5,7 @@ import (
     "net/http"
     "bytes"
     "time"
+    "sync"
 
     "log"
 )
@@ -26,6 +27,7 @@ type HTTPClient struct {
 
     // chanMap maps session id to channel for input
     chanMap map[string] chan *DataBlock
+    mux sync.RWMutex
 }
 
 // HTTP payload structure:
@@ -33,7 +35,7 @@ type HTTPClient struct {
 // | Session ID | Length | Data |
 // ------------------------------
 
-func (c *HTTPClient) connect(sendChan chan *DataBlock) {
+func (c *HTTPClient) connect(id []byte, sendChan chan *DataBlock) {
     sessionEnded := false // whether END_SESSION is issued
     var nextPollInterval time.Duration = 0 // Polling interval
     for {
@@ -43,36 +45,26 @@ func (c *HTTPClient) connect(sendChan chan *DataBlock) {
 
         var req *http.Request
 
+        buf := &bytes.Buffer{}
+
         // construct HTTP request
         select {
         case block := <-sendChan:
             // Have data to send out
             // First, allocate buffer for data to send out
-            bufLength := SessionIDLength + binary.Size(block.Length)
-            if block.Length > 0 {
-                bufLength += block.Length
-            } else if block.Length == END_SESSION {
+            if block.Length == END_SESSION {
                 sessionEnded = true
             }
 
             // Write data to buffer
-            buf := bytes.NewBuffer(make([]byte,bufLength))
-            _, err := buf.Write(block.SessionID)
-            if err != nil {
-                panic("Error when writing DataBlock info to buffer")
-            }
-
-            err = binary.Write(buf, binary.BigEndian, block.Length)
+            buf.Write(block.SessionID)
+            err := binary.Write(buf, binary.BigEndian, block.Length)
             if err != nil {
                 panic("Error when writing DataBlock info to buffer")
             }
 
             if block.Length > 0 {
-                n, err := buf.Write(block.Data)
-                if n < block.Length || err != nil {
-                    log.Println("Error occurred when building polling HTTP request: corrupted input")
-                    continue
-                }
+                buf.Write(block.Data[:block.Length])
             }
 
             // Create req object
@@ -81,11 +73,26 @@ func (c *HTTPClient) connect(sendChan chan *DataBlock) {
                 panic("Error when creating http request object")
             }
         case <- time.After(nextPollInterval):
-            req, err := http.NewRequest("POST", c.url, nil)
+            var err error
+            buf.Write(id)
+            err = binary.Write(buf, binary.BigEndian, NO_DATA)
+            if err != nil {
+                panic("Error when writing DataBlock info to buffer")
+            }
+
+            req, err = http.NewRequest("POST", c.url, buf)
             if err != nil {
                 panic("Error when creating http request object")
             }
-            req.Header.Set("Content-Length", "0")
+        }
+
+        if nextPollInterval == 0 {
+            nextPollInterval = minPollInterval
+        } else {
+            nextPollInterval = 2 * nextPollInterval
+            if nextPollInterval > maxPollInterval {
+                nextPollInterval = maxPollInterval
+            }
         }
 
         // RoundTrip
@@ -113,7 +120,9 @@ func (c *HTTPClient) connect(sendChan chan *DataBlock) {
             } else {
                 // verify the session id exists in chanMap
                 // server side is not supposed to create new connections
+                c.mux.RLock()
                 _, exists := c.chanMap[string(block.SessionID)]
+                c.mux.RUnlock()
                 if !exists {
                     log.Printf("Error: Data block with unknown session id received")
                     continue
@@ -123,15 +132,6 @@ func (c *HTTPClient) connect(sendChan chan *DataBlock) {
             c.RecvChan <- block
 
             nextPollInterval = 0 // immediate poll since data is returned
-        } else {
-            if nextPollInterval == 0 {
-                nextPollInterval = minPollInterval
-            } else {
-                nextPollInterval = 2 * nextPollInterval
-                if nextPollInterval > maxPollInterval {
-                    nextPollInterval = maxPollInterval
-                }
-            }
         }
     }
 }
@@ -148,10 +148,13 @@ func (c *HTTPClient) StartWithHTTPClient(url string, client *http.Client) {
         block := <-c.SendChan
         if block.Length == NEW_SESSION {
             targetChan := make(chan *DataBlock, 10)
+            c.mux.Lock()
             c.chanMap[string(block.SessionID)] = targetChan
-            go c.connect(targetChan)
+            c.mux.Unlock()
+            go c.connect(block.SessionID, targetChan)
         }
 
+        // No need to hold read lock since only this goroutine writes to the map
         targetChan, exists := c.chanMap[string(block.SessionID)]
         if !exists {
             panic("Attempt to send data without passing NEW_SESSION flag")
@@ -160,7 +163,9 @@ func (c *HTTPClient) StartWithHTTPClient(url string, client *http.Client) {
         targetChan <- block
 
         if block.Length == END_SESSION {
+            c.mux.Lock()
             delete(c.chanMap, string(block.SessionID))
+            c.mux.Unlock()
         }
     }
 }
