@@ -35,11 +35,19 @@ ${BIN_DIR}/dnsreverser_client: src/dnsreverser_client.go src/dnshandshake/*.go s
 ${BIN_DIR}/dnsreverser_server: src/dnsreverser_server.go src/dnshandshake/*.go src/reverser/*.go
 	${EXTRA_ENV_VAR} go build ${GOBUILDFLAGS} -o ${BIN_DIR}/dnsreverser_server src/dnsreverser_server.go
 
-test: prep reverser_test dnshandshake_test
+test: prep reverser_test dnshandshake_test httpobfs_test
 
 reverser_test: ${TEST_BIN_DIR}/reverserClient ${TEST_BIN_DIR}/reverserServer
 
 dnshandshake_test: ${TEST_BIN_DIR}/dns_server ${TEST_BIN_DIR}/test_dns_client
+
+httpobfs_test: ${TEST_BIN_DIR}/httpobfs_client ${TEST_BIN_DIR}/httpobfs_server
+
+${TEST_BIN_DIR}/httpobfs_client: src/httpobfs/*.go src/httpobfs/example/httpobfs_client.go
+	${EXTRA_ENV_VAR} go build ${GOBUILDFLAGS} -o ${TEST_BIN_DIR}/httpobfs_client src/httpobfs/example/httpobfs_client.go
+
+${TEST_BIN_DIR}/httpobfs_server: src/httpobfs/*.go src/httpobfs/example/httpobfs_server.go
+	${EXTRA_ENV_VAR} go build ${GOBUILDFLAGS} -o ${TEST_BIN_DIR}/httpobfs_server src/httpobfs/example/httpobfs_server.go
 
 ${TEST_BIN_DIR}/dns_server: src/dnshandshake/*.go src/dnshandshake/example/dns_server.go
 	${EXTRA_ENV_VAR} go build ${GOBUILDFLAGS} -o ${TEST_BIN_DIR}/dns_server src/dnshandshake/example/dns_server.go
@@ -58,4 +66,5 @@ clean:
 	rm -rf pkg/*
 	rm -rf src/github.com/
 
-.PHONY: all dynamic dynamic_prep linux_amd64 linux_386 test prep dnsreverser reverser_test dnshandshake_test clean
+.PHONY: all dynamic dynamic_prep linux_amd64 linux_386 test prep clean \
+	dnsreverser reverser_test dnshandshake_test httpobfs_test
