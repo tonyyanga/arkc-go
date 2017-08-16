@@ -8,14 +8,14 @@ import (
 // This file provides a simple adapter for httpobfs server that issues TCP connections
 // to targetAddr
 
-type obfsContext struct {
+type obfsServerContext struct {
     server *HTTPServer
     dispatchMap map[string] chan *DataBlock
     targetAddr string
 }
 
 // handle incoming blocks, end with END_SESSION
-func (ctx *obfsContext) handleServerSession(id string, recvChan chan *DataBlock, sendChan chan *DataBlock) {
+func (ctx *obfsServerContext) handleServerSession(id string, recvChan chan *DataBlock) {
     // Create connection to target
     conn, err := net.Dial("tcp", ctx.targetAddr)
     if err != nil {
@@ -25,47 +25,17 @@ func (ctx *obfsContext) handleServerSession(id string, recvChan chan *DataBlock,
             SessionID: []byte(id),
             Length: END_SESSION,
         }
-        sendChan <- block
+        ctx.server.SendChan <- block
         return
     }
 
     errChan := make(chan error, 1)
 
     // Start read goroutine
-    go func() {
-        for {
-            block := <-recvChan
-            if block.Length == END_SESSION {
-                // nil means connection closed gracefully
-                errChan <- nil
-                return
-            } else {
-                // regular connection data
-                _, err := conn.Write(block.Data)
-                if err != nil {
-                    errChan <- err
-                }
-            }
-        }
-    } ()
+    go handleConnWrite([]byte(id), conn, recvChan, errChan)
 
     // Start write goroutine
-    go func() {
-        for {
-            buf := make([]byte, DefaultBlockLength)
-            n, err := conn.Read(buf)
-            if err != nil {
-                errChan <- err
-                return
-            }
-            block := &DataBlock{
-                SessionID: []byte(id),
-                Length: n,
-                Data: buf,
-            }
-            sendChan <- block
-        }
-    } ()
+    go handleConnRead([]byte(id), conn, ctx.server.SendChan, errChan)
 
     // If err received from error channel, close connection after END_SESSION
     err = <-errChan
@@ -77,14 +47,14 @@ func (ctx *obfsContext) handleServerSession(id string, recvChan chan *DataBlock,
             SessionID: []byte(id),
             Length: END_SESSION,
         }
-        sendChan <- block
+        ctx.server.SendChan <- block
+        delete(ctx.dispatchMap, id)
     }
-
 }
 
 // This function dispatch requests from recvChan and start new goroutines to handle
 // individual connections
-func (ctx *obfsContext) obfsServerDispatch() {
+func (ctx *obfsServerContext) obfsServerDispatch() {
     for {
         block := <-ctx.server.RecvChan
 
@@ -94,7 +64,7 @@ func (ctx *obfsContext) obfsServerDispatch() {
             // New session from the client side, to be handled in a new goroutine
             recvChan := make(chan *DataBlock, 10)
             ctx.dispatchMap[sessionID] = recvChan
-            go ctx.handleServerSession(sessionID, recvChan, ctx.server.SendChan)
+            go ctx.handleServerSession(sessionID, recvChan)
 
             // No need to forward NEW_SESSION to target
             continue
@@ -121,7 +91,7 @@ func startObfsServerImpl(targetAddr string) *HTTPServer {
         SendChan: make(chan *DataBlock, 50),
     }
 
-    ctx := &obfsContext{
+    ctx := &obfsServerContext{
         // dispatchMap is used for dispatching RecvChan messages
         dispatchMap: make(map[string] chan *DataBlock),
         server: server,

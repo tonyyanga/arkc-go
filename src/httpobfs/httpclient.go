@@ -137,7 +137,7 @@ func (c *HTTPClient) connect(sendChan chan *DataBlock) {
 }
 
 // Start HTTP polling client with the http.Client provided
-func (c *HTTPClient) StartWithHTTPClient(url string, client *http.Client) error {
+func (c *HTTPClient) StartWithHTTPClient(url string, client *http.Client) {
     c.url = url
     c.client = client
 
@@ -163,10 +163,9 @@ func (c *HTTPClient) StartWithHTTPClient(url string, client *http.Client) error 
             delete(c.chanMap, string(block.SessionID))
         }
     }
-    return nil
 }
 
 // Start HTTP polling client with default http.Client
-func (c *HTTPClient) Start(url string) error {
-    return c.StartWithHTTPClient(url, &http.Client{})
+func (c *HTTPClient) Start(url string) {
+    c.StartWithHTTPClient(url, &http.Client{})
 }
