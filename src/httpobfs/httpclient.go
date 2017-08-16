@@ -154,8 +154,9 @@ func (c *HTTPClient) StartWithHTTPClient(url string, client *http.Client) {
             go c.connect(block.SessionID, targetChan)
         }
 
-        // No need to hold read lock since only this goroutine writes to the map
+        c.mux.RLock()
         targetChan, exists := c.chanMap[string(block.SessionID)]
+        c.mux.RUnlock()
         if !exists {
             panic("Attempt to send data without passing NEW_SESSION flag")
         }

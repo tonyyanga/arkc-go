@@ -2,6 +2,7 @@ package httpobfs
 
 import (
     "net"
+    "sync"
     "log"
 )
 
@@ -11,6 +12,7 @@ import (
 type obfsServerContext struct {
     server *HTTPServer
     dispatchMap map[string] chan *DataBlock
+    mux sync.RWMutex
     targetAddr string
 }
 
@@ -20,7 +22,9 @@ func (ctx *obfsServerContext) handleServerSession(id string, recvChan chan *Data
     conn, err := net.Dial("tcp", ctx.targetAddr)
     if err != nil {
         // connection fails, send END_SESSION
+        ctx.mux.Lock()
         delete(ctx.dispatchMap, id)
+        ctx.mux.Unlock()
         block := &DataBlock{
             SessionID: []byte(id),
             Length: END_SESSION,
@@ -48,7 +52,9 @@ func (ctx *obfsServerContext) handleServerSession(id string, recvChan chan *Data
             Length: END_SESSION,
         }
         ctx.server.SendChan <- block
+        ctx.mux.Lock()
         delete(ctx.dispatchMap, id)
+        ctx.mux.Unlock()
     }
 }
 
@@ -63,7 +69,9 @@ func (ctx *obfsServerContext) obfsServerDispatch() {
         if block.Length == NEW_SESSION {
             // New session from the client side, to be handled in a new goroutine
             recvChan := make(chan *DataBlock, 10)
+            ctx.mux.Lock()
             ctx.dispatchMap[sessionID] = recvChan
+            ctx.mux.Unlock()
             go ctx.handleServerSession(sessionID, recvChan)
 
             // No need to forward NEW_SESSION to target
@@ -71,7 +79,9 @@ func (ctx *obfsServerContext) obfsServerDispatch() {
         }
 
         // If not NEW_SESSION, forward block to channel
+        ctx.mux.RLock()
         chanToSend, exists := ctx.dispatchMap[sessionID]
+        ctx.mux.RUnlock()
         if !exists {
             log.Printf("Error: cannot find channel in dispatch map, packet dropped\n")
             continue
@@ -80,7 +90,9 @@ func (ctx *obfsServerContext) obfsServerDispatch() {
 
         if block.Length == END_SESSION {
             // remove channel from dispatchMap
+            ctx.mux.Lock()
             delete(ctx.dispatchMap, sessionID)
+            ctx.mux.Unlock()
         }
     }
 }

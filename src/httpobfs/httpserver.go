@@ -89,7 +89,6 @@ func (s *HTTPServer) serveHTTPPost(w http.ResponseWriter, req *http.Request) {
         if block.Length > 0 {
             // Finally read Data
             _, err = w.Write(block.Data[:block.Length])
-            log.Printf("Send resp with length %v\n", block.Length)
             if err != nil {
                 log.Printf("Error when writing data to HTTP resp to %v\n", req.RemoteAddr)
                 sendChan <- block

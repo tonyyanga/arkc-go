@@ -2,6 +2,7 @@ package httpobfs
 
 import (
     "net"
+    "sync"
     "log"
 )
 
@@ -10,6 +11,7 @@ import (
 
 type obfsClientContext struct {
     client *HTTPClient
+    mux sync.RWMutex
     dispatchMap map[string] chan *DataBlock
 }
 
@@ -18,7 +20,9 @@ func (ctx *obfsClientContext) handleConn(conn net.Conn) {
     var id string
     for {
         buf := GenerateRandSessionID()
+        ctx.mux.RLock()
         _, exists := ctx.dispatchMap[string(buf)]
+        ctx.mux.RUnlock()
         if !exists {
             id = string(buf)
             break
@@ -27,7 +31,9 @@ func (ctx *obfsClientContext) handleConn(conn net.Conn) {
 
     // Add myself to dispatchMap
     recvChan := make(chan *DataBlock, 10)
+    ctx.mux.Lock()
     ctx.dispatchMap[id] = recvChan
+    ctx.mux.Unlock()
 
     // Issue NEW_SESSION to register with the other side
     block := &DataBlock{
@@ -54,7 +60,9 @@ func (ctx *obfsClientContext) handleConn(conn net.Conn) {
             Length: END_SESSION,
         }
         ctx.client.SendChan <- block
+        ctx.mux.Lock()
         delete(ctx.dispatchMap, id)
+        ctx.mux.Unlock()
     }
 }
 
@@ -69,7 +77,9 @@ func (ctx *obfsClientContext) dispatch() {
             continue
         }
 
+        ctx.mux.RLock()
         chanToSend, exists := ctx.dispatchMap[sessionID]
+        ctx.mux.RUnlock()
         if !exists {
             log.Printf("Error: cannot find channel in dispatch map, packet dropped\n")
             continue
@@ -78,7 +88,9 @@ func (ctx *obfsClientContext) dispatch() {
 
         if block.Length == END_SESSION {
             // remove channel from dispatchMap
+            ctx.mux.Lock()
             delete(ctx.dispatchMap, sessionID)
+            ctx.mux.Unlock()
         }
     }
 }
