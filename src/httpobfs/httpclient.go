@@ -18,16 +18,45 @@ const (
 // An HTTP client does polling via HTTP/HTTPS connections, and interact with other
 // components with DataBlock channels
 type HTTPClient struct {
-    // User should handle RecvChan and SendChan DataBlocks
-    RecvChan chan *DataBlock
-    SendChan chan *DataBlock
-
     url string
     client *http.Client
 
-    // chanMap maps session id to channel for input
-    chanMap map[string] chan *DataBlock
+    // ChanMap maps session id to channel for input and output
+    ChanMap map[string] chanPair
     mux sync.RWMutex
+}
+
+// Register ID with HTTP Client
+func (c *HTTPClient) RegisterID(id string) chanPair {
+    c.mux.Lock()
+    defer c.mux.Unlock()
+    pair := chanPair{
+        RecvChan: make(chan *DataBlock, 10),
+        SendChan: make(chan *DataBlock, 10),
+    }
+    _, exists := c.ChanMap[id]
+    if exists {
+        log.Println("Error: ID already exists in channel map")
+    } else {
+        c.ChanMap[id] = pair
+    }
+
+    // Start goroutine to handle it
+    go c.connect([]byte(id))
+
+    return pair
+}
+
+// Unregister ID with HTTP Client
+func (c *HTTPClient) UnregisterID(id string) {
+    c.mux.Lock()
+    defer c.mux.Unlock()
+    _, exists := c.ChanMap[id]
+    if !exists {
+        log.Println("Error: ID does not exist in channel map")
+    } else {
+        delete(c.ChanMap, id)
+    }
 }
 
 // HTTP payload structure:
@@ -35,10 +64,18 @@ type HTTPClient struct {
 // | Session ID | Length | Data |
 // ------------------------------
 
-func (c *HTTPClient) connect(id []byte, sendChan chan *DataBlock) {
+func (c *HTTPClient) connect(id []byte) {
     sessionEnded := false // whether END_SESSION is issued
     var nextPollInterval time.Duration = minPollInterval // Polling interval
     var err error
+
+    pair, ok := c.ChanMap[string(id)]
+    if !ok {
+        panic("key not found")
+    }
+    sendChan := pair.SendChan
+    recvChan := pair.RecvChan
+
     for {
         if sessionEnded {
             break
@@ -105,7 +142,7 @@ func (c *HTTPClient) connect(id []byte, sendChan chan *DataBlock) {
                 SessionID: id,
                 Length: END_SESSION,
             }
-            c.RecvChan <- block
+            recvChan <- block
             return
         }
 
@@ -117,7 +154,7 @@ func (c *HTTPClient) connect(id []byte, sendChan chan *DataBlock) {
                 SessionID: id,
                 Length: END_SESSION,
             }
-            c.RecvChan <- block
+            recvChan <- block
             resp.Body.Close()
             return
         }
@@ -134,10 +171,10 @@ func (c *HTTPClient) connect(id []byte, sendChan chan *DataBlock) {
                 if block.Length == END_SESSION {
                     sessionEnded = true
                 } else {
-                    // verify the session id exists in chanMap
+                    // verify the session id exists in ChanMap
                     // server side is not supposed to create new connections
                     c.mux.RLock()
-                    _, exists := c.chanMap[string(block.SessionID)]
+                    _, exists := c.ChanMap[string(block.SessionID)]
                     c.mux.RUnlock()
                     if !exists {
                         log.Printf("Error: Data block with unknown session id received. %#X\n", block.SessionID)
@@ -145,7 +182,7 @@ func (c *HTTPClient) connect(id []byte, sendChan chan *DataBlock) {
                     }
                 }
 
-                c.RecvChan <- block
+                recvChan <- block
 
                 nextPollInterval = 0 // immediate poll since data is returned
             }
@@ -155,55 +192,15 @@ func (c *HTTPClient) connect(id []byte, sendChan chan *DataBlock) {
     }
 }
 
-// Start HTTP polling client with the http.Client provided
+// Prepare HTTP polling client with the http.Client provided
 func (c *HTTPClient) StartWithHTTPClient(url string, client *http.Client) {
     c.url = url
     c.client = client
 
-    c.chanMap = make(map[string] chan *DataBlock)
-
-    // Every goroutine only polls on one connection to avoid reordering
-    for {
-        block := <-c.SendChan
-        if block.Length == NEW_SESSION {
-            targetChan := make(chan *DataBlock, 10)
-            c.mux.Lock()
-            _, exists := c.chanMap[string(block.SessionID)]
-            if exists {
-                log.Println("Error: ID already exists in channel map")
-                c.mux.Unlock()
-                continue
-            }
-            c.chanMap[string(block.SessionID)] = targetChan
-            c.mux.Unlock()
-            go c.connect(block.SessionID, targetChan)
-            log.Printf("Client side NEW_SESSION %#X\n", block.SessionID)
-        }
-
-        c.mux.RLock()
-        targetChan, exists := c.chanMap[string(block.SessionID)]
-        c.mux.RUnlock()
-        if !exists {
-            panic("Attempt to send data without passing NEW_SESSION flag")
-        }
-
-        select {
-        case targetChan <- block:
-
-        case <-time.After(2 * time.Second):
-            panic("TIMEOUT")
-        }
-
-        if block.Length == END_SESSION {
-            log.Printf("Client side END_SESSION %#X\n", block.SessionID)
-            c.mux.Lock()
-            delete(c.chanMap, string(block.SessionID))
-            c.mux.Unlock()
-        }
-    }
+    c.ChanMap = make(map[string] chanPair)
 }
 
-// Start HTTP polling client with default http.Client
+// Prepare HTTP polling client with default http.Client
 func (c *HTTPClient) Start(url string) {
     c.StartWithHTTPClient(url, &http.Client{})
 }

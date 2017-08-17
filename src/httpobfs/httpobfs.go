@@ -30,6 +30,11 @@ type DataBlock struct {
     Data []byte
 }
 
+type chanPair struct {
+    RecvChan chan *DataBlock
+    SendChan chan *DataBlock
+}
+
 func constructDataBlock(body io.Reader) (*DataBlock, error) {
     block := &DataBlock{
         SessionID: make([]byte, SessionIDLength),

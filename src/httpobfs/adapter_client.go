@@ -12,7 +12,6 @@ import (
 type obfsClientContext struct {
     client *HTTPClient
     mux sync.RWMutex
-    dispatchMap map[string] chan *DataBlock
 }
 
 func (ctx *obfsClientContext) handleConn(conn net.Conn) {
@@ -21,7 +20,7 @@ func (ctx *obfsClientContext) handleConn(conn net.Conn) {
     for {
         buf := GenerateRandSessionID()
         ctx.mux.RLock()
-        _, exists := ctx.dispatchMap[string(buf)]
+        _, exists := ctx.client.ChanMap[string(buf)]
         ctx.mux.RUnlock()
         if !exists {
             id = string(buf)
@@ -29,23 +28,22 @@ func (ctx *obfsClientContext) handleConn(conn net.Conn) {
         }
     }
 
-    // Add myself to dispatchMap
-    recvChan := make(chan *DataBlock, 10)
-    ctx.mux.Lock()
-    ctx.dispatchMap[id] = recvChan
-    ctx.mux.Unlock()
+    // Register ID with HTTP client
+    pair := ctx.client.RegisterID(id)
+    sendChan := pair.SendChan
+    recvChan := pair.RecvChan
 
     // Issue NEW_SESSION to register with the other side
     block := &DataBlock{
         SessionID: []byte(id),
         Length: NEW_SESSION,
     }
-    ctx.client.SendChan <- block
+    sendChan <- block
 
     errChan := make(chan error, 1)
 
     // Start regular data writer
-    go handleConnRead([]byte(id), conn, ctx.client.SendChan, errChan)
+    go handleConnRead([]byte(id), conn, sendChan, errChan)
 
     // Start regular data reader
     go handleConnWrite([]byte(id), conn, recvChan, errChan)
@@ -59,40 +57,10 @@ func (ctx *obfsClientContext) handleConn(conn net.Conn) {
             SessionID: []byte(id),
             Length: END_SESSION,
         }
-        ctx.client.SendChan <- block
-        ctx.mux.Lock()
-        delete(ctx.dispatchMap, id)
-        ctx.mux.Unlock()
+        sendChan <- block
     }
-}
 
-func (ctx *obfsClientContext) dispatch() {
-    for {
-        block := <-ctx.client.RecvChan
-        sessionID := string(block.SessionID)
-
-        if block.Length == NEW_SESSION {
-            // Illegal input
-            log.Printf("Error: illegal input from server\n")
-            continue
-        }
-
-        ctx.mux.RLock()
-        chanToSend, exists := ctx.dispatchMap[sessionID]
-        ctx.mux.RUnlock()
-        if !exists {
-            log.Printf("Error: cannot find channel in dispatch map, %#X\n", block.SessionID)
-            continue
-        }
-        chanToSend <- block
-
-        if block.Length == END_SESSION {
-            // remove channel from dispatchMap
-            ctx.mux.Lock()
-            delete(ctx.dispatchMap, sessionID)
-            ctx.mux.Unlock()
-        }
-    }
+    ctx.client.UnregisterID(id)
 }
 
 func StartHTTPObfsClient(url string, listenAddr string) error {
@@ -104,21 +72,14 @@ func StartHTTPObfsClient(url string, listenAddr string) error {
 
     defer listener.Close()
 
-    client := &HTTPClient{
-        RecvChan: make(chan *DataBlock, 50),
-        SendChan: make(chan *DataBlock, 50),
-    }
+    client := &HTTPClient{}
 
     ctx := &obfsClientContext{
-        dispatchMap: make(map[string] chan *DataBlock),
         client: client,
     }
 
-    // Start HTTP obfs client
-    go client.Start(url)
-
-    // Start connection dispatcher
-    go ctx.dispatch()
+    // Prepare HTTP obfs client
+    client.Start(url)
 
     for {
         conn, err := listener.Accept()
@@ -128,5 +89,4 @@ func StartHTTPObfsClient(url string, listenAddr string) error {
 
         go ctx.handleConn(conn)
     }
-
 }
