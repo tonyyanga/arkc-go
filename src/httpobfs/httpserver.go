@@ -5,6 +5,8 @@ import (
     "encoding/binary"
     "log"
     "sync"
+
+//    "time"
 )
 
 // An HTTP server handles incoming HTTP/HTTPS connections, and interact with other
@@ -37,8 +39,16 @@ func (s *HTTPServer) serveHTTPPost(w http.ResponseWriter, req *http.Request) {
 
         if block.Length == NEW_SESSION {
             //log.Printf("Server side NEW_SESSION %v\n", block.SessionID)
-            sendChan := make(chan *DataBlock, 10)
+            sendChan := make(chan *DataBlock, 100)
             s.mux.Lock()
+            _, exists := s.chanMap[string(block.SessionID)]
+            if exists {
+                s.mux.Unlock()
+                log.Println("Error: id already exists in channel map")
+                http.Error(w, "Bad request.\n", http.StatusBadRequest)
+                return
+            }
+
             s.chanMap[string(block.SessionID)] = sendChan
             s.mux.Unlock()
         }
@@ -134,7 +144,13 @@ func (s *HTTPServer) dispatch() {
             log.Printf("Error: cannot find channel by session id")
             continue
         }
-        targetChan <- block
+        select {
+        case targetChan <- block:
+
+        //case <- time.After(2 * time.Second):
+        default:
+            panic("TIMEOUT")
+        }
     }
 }
 

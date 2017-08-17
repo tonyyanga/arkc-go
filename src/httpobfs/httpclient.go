@@ -126,6 +126,7 @@ func (c *HTTPClient) connect(id []byte, sendChan chan *DataBlock) {
         if resp.ContentLength > 0 || resp.ContentLength == -1 {
             // Not empty response
             block, err := constructDataBlock(resp.Body)
+            resp.Body.Close()
             if err != nil {
                 log.Printf("Error when reading from HTTP response: %v\n", err)
             } else {
@@ -139,7 +140,7 @@ func (c *HTTPClient) connect(id []byte, sendChan chan *DataBlock) {
                     _, exists := c.chanMap[string(block.SessionID)]
                     c.mux.RUnlock()
                     if !exists {
-                        log.Printf("Error: Data block with unknown session id received")
+                        log.Printf("Error: Data block with unknown session id received. %#X\n", block.SessionID)
                         continue
                     }
                 }
@@ -148,8 +149,9 @@ func (c *HTTPClient) connect(id []byte, sendChan chan *DataBlock) {
 
                 nextPollInterval = 0 // immediate poll since data is returned
             }
+        } else {
+            resp.Body.Close()
         }
-        resp.Body.Close()
     }
 }
 
@@ -166,9 +168,16 @@ func (c *HTTPClient) StartWithHTTPClient(url string, client *http.Client) {
         if block.Length == NEW_SESSION {
             targetChan := make(chan *DataBlock, 10)
             c.mux.Lock()
+            _, exists := c.chanMap[string(block.SessionID)]
+            if exists {
+                log.Println("Error: ID already exists in channel map")
+                c.mux.Unlock()
+                continue
+            }
             c.chanMap[string(block.SessionID)] = targetChan
             c.mux.Unlock()
             go c.connect(block.SessionID, targetChan)
+            log.Printf("Client side NEW_SESSION %#X\n", block.SessionID)
         }
 
         c.mux.RLock()
@@ -178,10 +187,15 @@ func (c *HTTPClient) StartWithHTTPClient(url string, client *http.Client) {
             panic("Attempt to send data without passing NEW_SESSION flag")
         }
 
-        //log.Printf("Client side NEW_SESSION %v\n", block.SessionID)
-        targetChan <- block
+        select {
+        case targetChan <- block:
+
+        case <-time.After(2 * time.Second):
+            panic("TIMEOUT")
+        }
 
         if block.Length == END_SESSION {
+            log.Printf("Client side END_SESSION %#X\n", block.SessionID)
             c.mux.Lock()
             delete(c.chanMap, string(block.SessionID))
             c.mux.Unlock()

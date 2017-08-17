@@ -81,7 +81,7 @@ func (ctx *obfsClientContext) dispatch() {
         chanToSend, exists := ctx.dispatchMap[sessionID]
         ctx.mux.RUnlock()
         if !exists {
-            log.Printf("Error: cannot find channel in dispatch map, packet dropped\n")
+            log.Printf("Error: cannot find channel in dispatch map, %#X\n", block.SessionID)
             continue
         }
         chanToSend <- block
