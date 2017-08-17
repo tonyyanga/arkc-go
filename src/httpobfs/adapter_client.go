@@ -2,7 +2,6 @@ package httpobfs
 
 import (
     "net"
-    "sync"
     "log"
 )
 
@@ -11,7 +10,6 @@ import (
 
 type obfsClientContext struct {
     client *HTTPClient
-    mux sync.RWMutex
 }
 
 func (ctx *obfsClientContext) handleConn(conn net.Conn) {
@@ -19,9 +17,9 @@ func (ctx *obfsClientContext) handleConn(conn net.Conn) {
     var id string
     for {
         buf := GenerateRandSessionID()
-        ctx.mux.RLock()
+        ctx.client.mux.RLock()
         _, exists := ctx.client.ChanMap[string(buf)]
-        ctx.mux.RUnlock()
+        ctx.client.mux.RUnlock()
         if !exists {
             id = string(buf)
             break

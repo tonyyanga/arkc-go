@@ -12,13 +12,43 @@ import (
 // An HTTP server handles incoming HTTP/HTTPS connections, and interact with other
 // components with DataBlock channels
 type HTTPServer struct {
-    // User should handle RecvChan and SendChan DataBlocks
-    RecvChan chan *DataBlock
-    SendChan chan *DataBlock
-
-    // maps session id to send channels
-    chanMap map[string] chan *DataBlock
+    // maps session id to send / recv channels
+    ChanMap map[string] chanPair
     mux sync.RWMutex
+
+    // Callback for new connections
+    connHandler func(id string)
+}
+
+// Register id with HTTPServer
+func (s *HTTPServer) RegisterID(id string) {
+    s.mux.Lock()
+    defer s.mux.Unlock()
+    _, exists := s.ChanMap[id]
+    if exists {
+        panic("Error: adding session id that already exists")
+    }
+
+    pair := chanPair{
+        RecvChan: make(chan *DataBlock, 10),
+        SendChan: make(chan *DataBlock, 10),
+    }
+    s.ChanMap[id] = pair
+
+    // Start callback
+    go s.connHandler(id)
+}
+
+// Unregister ID with HTTP Client
+func (s *HTTPServer) UnregisterID(id string) {
+    s.mux.Lock()
+    defer s.mux.Unlock()
+    _, exists := s.ChanMap[id]
+    if !exists {
+        log.Println("Error: ID does not exist in channel map")
+    } else {
+        delete(s.ChanMap, id)
+    }
 }
 
 // HTTP payload structure:
@@ -29,54 +59,46 @@ type HTTPServer struct {
 func (s *HTTPServer) serveHTTPPost(w http.ResponseWriter, req *http.Request) {
     var sessionID string
     // Handle request
-    if req.ContentLength != 0 {
-        block, err := constructDataBlock(req.Body)
-        if err != nil {
-            log.Printf("Error when reading HTTP request from %v: %v\n", err, req.RemoteAddr)
-            http.Error(w, "Bad request.\n", http.StatusBadRequest)
-            return
-        }
-
-        if block.Length == NEW_SESSION {
-            //log.Printf("Server side NEW_SESSION %v\n", block.SessionID)
-            sendChan := make(chan *DataBlock, 100)
-            s.mux.Lock()
-            _, exists := s.chanMap[string(block.SessionID)]
-            if exists {
-                s.mux.Unlock()
-                log.Println("Error: id already exists in channel map")
-                http.Error(w, "Bad request.\n", http.StatusBadRequest)
-                return
-            }
-
-            s.chanMap[string(block.SessionID)] = sendChan
-            s.mux.Unlock()
-        }
-
-        if block.Length != NO_DATA {
-            s.RecvChan <- block
-        }
-        sessionID = string(block.SessionID)
-
-        if block.Length == END_SESSION {
-            s.mux.Lock()
-            delete(s.chanMap, sessionID)
-            s.mux.Unlock()
-            return
-        }
-    } else {
+    if req.ContentLength == 0 {
         log.Println("HTTP Server empty req")
         http.Error(w, "Bad request.\n", http.StatusBadRequest)
         return
     }
 
+    block, err := constructDataBlock(req.Body)
+    if err != nil {
+        log.Printf("Error when reading HTTP request from %v: %v\n", err, req.RemoteAddr)
+        http.Error(w, "Bad request.\n", http.StatusBadRequest)
+        return
+    }
+
+    sessionID = string(block.SessionID)
+
+    // If NEW_SESSION, register on map
+    if block.Length == NEW_SESSION {
+        //log.Printf("Server side NEW_SESSION %v\n", block.SessionID)
+        s.RegisterID(sessionID)
+    }
+
+    // If connection is to close, unregister id after closing connection
+    if block.Length == END_SESSION {
+        defer s.UnregisterID(sessionID)
+    }
+
     s.mux.RLock()
-    sendChan, exists := s.chanMap[sessionID]
+    pair, exists := s.ChanMap[sessionID]
     s.mux.RUnlock()
     if !exists {
         log.Printf("Error: cannot find channel by session id")
         http.Error(w, "Bad request.\n", http.StatusBadRequest)
         return
+    }
+
+    sendChan := pair.SendChan
+    recvChan := pair.RecvChan
+
+    if block.Length != NO_DATA && block.Length != NEW_SESSION {
+        recvChan <- block
     }
 
     // Generate response
@@ -106,9 +128,7 @@ func (s *HTTPServer) serveHTTPPost(w http.ResponseWriter, req *http.Request) {
                 return
             }
         } else if block.Length == END_SESSION {
-            s.mux.Lock()
-            delete(s.chanMap, sessionID)
-            s.mux.Unlock()
+            defer s.UnregisterID(string(block.SessionID))
         }
     default:
         w.Header().Set("Content-Length", "0")
@@ -134,30 +154,9 @@ func (s *HTTPServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
     }
 }
 
-func (s *HTTPServer) dispatch() {
-    for {
-        block := <-s.SendChan
-        s.mux.RLock()
-        targetChan, exists := s.chanMap[string(block.SessionID)]
-        s.mux.RUnlock()
-        if !exists {
-            log.Printf("Error: cannot find channel by session id")
-            continue
-        }
-        select {
-        case targetChan <- block:
-
-        //case <- time.After(2 * time.Second):
-        default:
-            panic("TIMEOUT")
-        }
-    }
-}
-
 // Call this function to listen for HTTP request
 func (s *HTTPServer) ListenAndServe(listenAddr string) error {
-    s.chanMap = make(map[string] chan *DataBlock)
-    go s.dispatch()
+    s.ChanMap = make(map[string] chanPair)
     err := http.ListenAndServe(listenAddr, s)
     log.Printf("Error occurred when listening for HTTP input: %v\n", err)
     return err
@@ -165,8 +164,7 @@ func (s *HTTPServer) ListenAndServe(listenAddr string) error {
 
 // Call this function to listen for HTTPS request
 func (s *HTTPServer) ListenAndServeTLS(listenAddr, certPath, keyPath string) error {
-    s.chanMap = make(map[string] chan *DataBlock)
-    go s.dispatch()
+    s.ChanMap = make(map[string] chanPair)
     err := http.ListenAndServeTLS(listenAddr, certPath, keyPath, s)
     log.Printf("Error occurred when listening for HTTPS input: %v\n", err)
     return err

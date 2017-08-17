@@ -36,10 +36,10 @@ func (c *HTTPClient) RegisterID(id string) chanPair {
     }
     _, exists := c.ChanMap[id]
     if exists {
-        log.Println("Error: ID already exists in channel map")
-    } else {
-        c.ChanMap[id] = pair
+        panic("Error: ID already exists in channel map")
     }
+
+    c.ChanMap[id] = pair
 
     // Start goroutine to handle it
     go c.connect([]byte(id))
@@ -69,7 +69,9 @@ func (c *HTTPClient) connect(id []byte) {
     var nextPollInterval time.Duration = minPollInterval // Polling interval
     var err error
 
+    c.mux.RLock()
     pair, ok := c.ChanMap[string(id)]
+    c.mux.RUnlock()
     if !ok {
         panic("key not found")
     }

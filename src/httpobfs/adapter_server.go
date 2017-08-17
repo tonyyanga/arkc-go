@@ -2,8 +2,7 @@ package httpobfs
 
 import (
     "net"
-    "sync"
-    "log"
+    //"log"
 )
 
 // This file provides a simple adapter for httpobfs server that issues TCP connections
@@ -11,25 +10,29 @@ import (
 
 type obfsServerContext struct {
     server *HTTPServer
-    dispatchMap map[string] chan *DataBlock
-    mux sync.RWMutex
     targetAddr string
 }
 
 // handle incoming blocks, end with END_SESSION
-func (ctx *obfsServerContext) handleServerSession(id string, recvChan chan *DataBlock) {
+func (ctx *obfsServerContext) handleServerSession(id string) {
+    ctx.server.mux.RLock()
+    pair, exists := ctx.server.ChanMap[id]
+    ctx.server.mux.RUnlock()
+    if !exists {
+        panic ("cannot find channel pair on map")
+    }
+    sendChan := pair.SendChan
+    recvChan := pair.RecvChan
+
     // Create connection to target
     conn, err := net.Dial("tcp", ctx.targetAddr)
     if err != nil {
         // connection fails, send END_SESSION
-        ctx.mux.Lock()
-        delete(ctx.dispatchMap, id)
-        ctx.mux.Unlock()
         block := &DataBlock{
             SessionID: []byte(id),
             Length: END_SESSION,
         }
-        ctx.server.SendChan <- block
+        sendChan <- block
         return
     }
 
@@ -39,7 +42,7 @@ func (ctx *obfsServerContext) handleServerSession(id string, recvChan chan *Data
     go handleConnWrite([]byte(id), conn, recvChan, errChan)
 
     // Start write goroutine
-    go handleConnRead([]byte(id), conn, ctx.server.SendChan, errChan)
+    go handleConnRead([]byte(id), conn, sendChan, errChan)
 
     // If err received from error channel, close connection after END_SESSION
     err = <-errChan
@@ -51,66 +54,21 @@ func (ctx *obfsServerContext) handleServerSession(id string, recvChan chan *Data
             SessionID: []byte(id),
             Length: END_SESSION,
         }
-        ctx.server.SendChan <- block
-        ctx.mux.Lock()
-        delete(ctx.dispatchMap, id)
-        ctx.mux.Unlock()
-    }
-}
-
-// This function dispatch requests from recvChan and start new goroutines to handle
-// individual connections
-func (ctx *obfsServerContext) obfsServerDispatch() {
-    for {
-        block := <-ctx.server.RecvChan
-
-        sessionID := string(block.SessionID)
-
-        if block.Length == NEW_SESSION {
-            // New session from the client side, to be handled in a new goroutine
-            recvChan := make(chan *DataBlock, 10)
-            ctx.mux.Lock()
-            ctx.dispatchMap[sessionID] = recvChan
-            ctx.mux.Unlock()
-            go ctx.handleServerSession(sessionID, recvChan)
-
-            // No need to forward NEW_SESSION to target
-            continue
-        }
-
-        // If not NEW_SESSION, forward block to channel
-        ctx.mux.RLock()
-        chanToSend, exists := ctx.dispatchMap[sessionID]
-        ctx.mux.RUnlock()
-        if !exists {
-            log.Printf("Error: cannot find channel in dispatch map, packet dropped\n")
-            continue
-        }
-        chanToSend <- block
-
-        if block.Length == END_SESSION {
-            // remove channel from dispatchMap
-            ctx.mux.Lock()
-            delete(ctx.dispatchMap, sessionID)
-            ctx.mux.Unlock()
-        }
+        sendChan <- block
     }
 }
 
 func startObfsServerImpl(targetAddr string) *HTTPServer {
-    server := &HTTPServer{
-        RecvChan: make(chan *DataBlock, 50),
-        SendChan: make(chan *DataBlock, 50),
-    }
+    server := &HTTPServer{}
 
     ctx := &obfsServerContext{
-        // dispatchMap is used for dispatching RecvChan messages
-        dispatchMap: make(map[string] chan *DataBlock),
         server: server,
         targetAddr: targetAddr,
     }
 
-    go ctx.obfsServerDispatch()
+    server.connHandler = func(id string) {
+        ctx.handleServerSession(id)
+    }
 
     return server
 }
