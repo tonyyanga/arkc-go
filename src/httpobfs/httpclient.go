@@ -125,6 +125,7 @@ func (c *HTTPClient) connect(id []byte) {
             }
         }
 
+        // Update poll interval
         if nextPollInterval == 0 {
             nextPollInterval = minPollInterval
         } else {

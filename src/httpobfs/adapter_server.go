@@ -8,13 +8,17 @@ import (
 // This file provides a simple adapter for httpobfs server that issues TCP connections
 // to targetAddr
 
+// Stores Server side context
 type obfsServerContext struct {
     server *HTTPServer
     targetAddr string
 }
 
-// handle incoming blocks, end with END_SESSION
+// Initiate connection to targetAddr and handle blocks
+// Specs: 1. Should receive no new session from sendChan
+//        2. End with END_SESSION and close connections
 func (ctx *obfsServerContext) handleServerSession(id string) {
+    // Get channel pair
     ctx.server.mux.RLock()
     pair, exists := ctx.server.ChanMap[id]
     ctx.server.mux.RUnlock()
@@ -36,6 +40,9 @@ func (ctx *obfsServerContext) handleServerSession(id string) {
         return
     }
 
+    // errChan is used to handle connection closing or END_SESSION
+    // Spec: nil means END_SESSION detected; otherwise, error has happened on
+    // connection to targetAddr
     errChan := make(chan error, 1)
 
     // Start read goroutine
@@ -44,12 +51,12 @@ func (ctx *obfsServerContext) handleServerSession(id string) {
     // Start write goroutine
     go handleConnRead([]byte(id), conn, sendChan, errChan)
 
-    // If err received from error channel, close connection after END_SESSION
+    // If err received from error channel, close connection
     err = <-errChan
     conn.Close()
 
     if err != nil {
-        // Error happens with target
+        // Error happens with targetAddr, issue END_SESSION
         block := &DataBlock{
             SessionID: []byte(id),
             Length: END_SESSION,
@@ -66,18 +73,20 @@ func startObfsServerImpl(targetAddr string) *HTTPServer {
         targetAddr: targetAddr,
     }
 
-    server.connHandler = func(id string) {
+    server.ConnHandler = func(id string) {
         ctx.handleServerSession(id)
     }
 
     return server
 }
 
+// Start a simple HTTP obfs server without SSL
 func StartHTTPObfsServer(listenAddr string, targetAddr string) error {
     server := startObfsServerImpl(targetAddr)
     return server.ListenAndServe(listenAddr)
 }
 
+// Start a simple HTTPS obfs server, TLS used
 func StartHTTPSObfsServer(listenAddr, certPath, keyPath string, targetAddr string) error {
     server := startObfsServerImpl(targetAddr)
     return server.ListenAndServeTLS(listenAddr, certPath, keyPath)

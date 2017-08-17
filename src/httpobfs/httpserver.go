@@ -16,8 +16,11 @@ type HTTPServer struct {
     ChanMap map[string] chanPair
     mux sync.RWMutex
 
-    // Callback for new connections
-    connHandler func(id string)
+    // Callback for new connections provided by user
+    // Spec: 1. callback does not need to handle ID register / unregister
+    //       2. callback does not need to process NEW_SESSION
+    //       3. callback should process END_SESSION and issues it on error
+    ConnHandler func(id string)
 }
 
 // Register id with HTTPServer
@@ -36,7 +39,7 @@ func (s *HTTPServer) RegisterID(id string) {
     s.ChanMap[id] = pair
 
     // Start callback
-    go s.connHandler(id)
+    go s.ConnHandler(id)
 }
 
 // Unregister ID with HTTP Client

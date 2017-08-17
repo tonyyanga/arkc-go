@@ -8,18 +8,17 @@ import (
 // This file provides a simple httpobfs client that listens at listenAddr and forward
 // the requests to url provided.
 
-type obfsClientContext struct {
-    client *HTTPClient
-}
-
-func (ctx *obfsClientContext) handleConn(conn net.Conn) {
+// handle incoming connection and notify httpobfs module
+// Spec: 1. Issues NEW_SESSION when connection starts
+// Spec: 2. Calls UnregisterID when connection closes
+func handleConn(client *HTTPClient, conn net.Conn) {
     // Generate session id for this conn
     var id string
     for {
         buf := GenerateRandSessionID()
-        ctx.client.mux.RLock()
-        _, exists := ctx.client.ChanMap[string(buf)]
-        ctx.client.mux.RUnlock()
+        client.mux.RLock()
+        _, exists := client.ChanMap[string(buf)]
+        client.mux.RUnlock()
         if !exists {
             id = string(buf)
             break
@@ -27,7 +26,7 @@ func (ctx *obfsClientContext) handleConn(conn net.Conn) {
     }
 
     // Register ID with HTTP client
-    pair := ctx.client.RegisterID(id)
+    pair := client.RegisterID(id)
     sendChan := pair.SendChan
     recvChan := pair.RecvChan
 
@@ -38,6 +37,9 @@ func (ctx *obfsClientContext) handleConn(conn net.Conn) {
     }
     sendChan <- block
 
+    // errChan is used to handle cases when connection ends
+    // Spec: err == nil means END_SESSION detected; otherwise, an error has
+    // occurred in the incoming connection
     errChan := make(chan error, 1)
 
     // Start regular data writer
@@ -46,11 +48,11 @@ func (ctx *obfsClientContext) handleConn(conn net.Conn) {
     // Start regular data reader
     go handleConnWrite([]byte(id), conn, recvChan, errChan)
 
-    err := <-errChan
     // Error received, close conn
+    err := <-errChan
     conn.Close()
     if err != nil {
-        // Error happens on local side, need END_SESSION
+        // Error happens on local side, issues END_SESSION
         block := &DataBlock{
             SessionID: []byte(id),
             Length: END_SESSION,
@@ -58,9 +60,10 @@ func (ctx *obfsClientContext) handleConn(conn net.Conn) {
         sendChan <- block
     }
 
-    ctx.client.UnregisterID(id)
+    client.UnregisterID(id)
 }
 
+// Start a simple HTTPObfs client
 func StartHTTPObfsClient(url string, listenAddr string) error {
     listener, err := net.Listen("tcp", listenAddr)
     if err != nil {
@@ -72,10 +75,6 @@ func StartHTTPObfsClient(url string, listenAddr string) error {
 
     client := &HTTPClient{}
 
-    ctx := &obfsClientContext{
-        client: client,
-    }
-
     // Prepare HTTP obfs client
     client.Start(url)
 
@@ -85,6 +84,6 @@ func StartHTTPObfsClient(url string, listenAddr string) error {
             log.Printf("Error occurred when accepting HTTP obfs requests: %v\n", err)
         }
 
-        go ctx.handleConn(conn)
+        go handleConn(client, conn)
     }
 }
