@@ -5,8 +5,6 @@ import (
     "encoding/binary"
     "log"
     "sync"
-
-//    "time"
 )
 
 // An HTTP server handles incoming HTTP/HTTPS connections, and interact with other
@@ -33,8 +31,8 @@ func (s *HTTPServer) RegisterID(id string) {
     }
 
     pair := chanPair{
-        RecvChan: make(chan *DataBlock, 10),
-        SendChan: make(chan *DataBlock, 10),
+        RecvChan: make(chan *DataBlock),
+        SendChan: make(chan *DataBlock),
     }
     s.ChanMap[id] = pair
 

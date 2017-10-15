@@ -31,8 +31,8 @@ func (c *HTTPClient) RegisterID(id string) chanPair {
     c.mux.Lock()
     defer c.mux.Unlock()
     pair := chanPair{
-        RecvChan: make(chan *DataBlock, 10),
-        SendChan: make(chan *DataBlock, 10),
+        RecvChan: make(chan *DataBlock),
+        SendChan: make(chan *DataBlock),
     }
     _, exists := c.ChanMap[id]
     if exists {
